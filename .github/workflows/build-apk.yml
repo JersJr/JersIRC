@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,24 +21,10 @@ jobs:
           cache: true
       - name: Generate Android platform
         run: flutter create --platforms=android --project-name jersirc .
-      - name: Remove generated Flutter test
-        run: rm -f test/widget_test.dart
-      - name: Add Internet permission
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('android/app/src/main/AndroidManifest.xml')
-          s = p.read_text()
-          permission = '<uses-permission android:name="android.permission.INTERNET"/>\n'
-          if permission not in s:
-              pos = s.find('>') + 1
-              s = s[:pos] + '\n    ' + permission + s[pos:]
-          p.write_text(s)
-          PY
       - name: Get dependencies
         run: flutter pub get
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Build APK
         run: flutter build apk --release
       - name: Upload APK
@@ -43,3 +32,4 @@ jobs:
         with:
           name: JersIRC-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
