@@ -21,6 +21,8 @@ jobs:
           cache: true
       - name: Generate Android platform
         run: flutter create --platforms=android --project-name jersirc .
+      - name: Enable Android internet permission
+        run: sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
       - name: Get dependencies
         run: flutter pub get
       - name: Analyze
