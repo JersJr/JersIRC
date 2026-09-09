@@ -14,121 +14,69 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Apply final JersIRC UI fixes
+      - name: Apply JersIRC chat UI fixes
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
           p = Path('lib/main.dart')
           s = p.read_text(encoding='utf-8')
 
-          # Clean IRC formatting/control characters and leaked color numbers.
-          start = s.find('  String cleanIrcText(String text) {')
-          if start >= 0:
-              end = s.find('\n  }', start)
-              if end >= 0:
-                  end += 4
-                  s = s[:start] + '''  String cleanIrcText(String text) {
-    var cleaned = text.replaceAll(RegExp('\\u0003(?:\\d{1,2}(?:,\\d{1,2})?)?'), '');
-    cleaned = cleaned.replaceAll(RegExp('[\\u0002\\u000F\\u0016\\u001D\\u001F]'), '');
-    cleaned = cleaned.replaceFirst(RegExp(r'^\\s*\\d{1,2}(?=\\s)'), '');
-    return cleaned.trimLeft();
-  }''' + s[end:]
+          if 'final Set<String> ignoredUsers = {};' not in s:
+              s = s.replace(
+                  '  bool userHasScrolled = false;\n',
+                  '  bool userHasScrolled = false;\n  final Set<String> ignoredUsers = {};\n'
+              )
 
-          # Remove placeholder dots and make rank + nickname appear together.
-          old = """          ...users.map((user) {
-            final prefix = current.modes[user] ?? '';
-            return ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 2), leading: Text(prefix.isEmpty ? '•' : prefix, style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))), title: Text(user, overflow: TextOverflow.ellipsis, style: TextStyle(color: nickColor(user), fontWeight: FontWeight.w600)), onTap: () => showUserActions(user));
-          }),
-"""
-          new = """          ...users.map((user) {
-            final prefix = current.modes[user] ?? '';
-            return InkWell(
-              onTap: () => showUserActions(user),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-                child: Row(children: [
-                  if (prefix.isNotEmpty) Text(prefix, style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))),
-                  if (prefix.isNotEmpty) const SizedBox(width: 1),
-                  Expanded(child: Text(user, overflow: TextOverflow.ellipsis, style: TextStyle(color: nickColor(user), fontWeight: FontWeight.w600))),
-                ]),
-              ),
-            );
-          }),
-"""
+          old = """      if ((m.command == 'PRIVMSG' || m.command == 'NOTICE') && m.params.isNotEmpty) {\n        final target = m.params.first;\n"""
+          new = """      if ((m.command == 'PRIVMSG' || m.command == 'NOTICE') && m.params.isNotEmpty) {\n        final target = m.params.first;\n        if (m.nick != null && ignoredUsers.contains(m.nick!.toLowerCase())) return;\n"""
           s = s.replace(old, new)
 
-          # Bigger status on the right with semantic colors.
-          old = """              SizedBox(width: 170, child: Text(status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
-"""
-          new = """              SizedBox(width: 205, child: Text(status, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: status.startsWith('Reconectando') ? Colors.amber : (status == 'Desconectado' ? Colors.redAccent : (connected ? const Color(0xFF8FB59B) : Colors.white70))))),
-"""
+          marker = "  Color nickColor(String user) {\n"
+          helpers = """  String cleanIrcText(String text) {\n    var cleaned = text.replaceAll(RegExp('\\\\u0003(?:\\\\d{1,2}(?:,\\\\d{1,2})?)?'), '');\n    cleaned = cleaned.replaceAll(RegExp('[\\\\u0002\\\\u000F\\\\u0016\\\\u001D\\\\u001F]'), '');\n    cleaned = cleaned.replaceFirst(RegExp(r'^\\s*\\d{1,2}(?=\\s)'), '');\n    return cleaned.trimLeft();\n  }\n\n  int rankWeight(String user) {\n    final prefix = current.modes[user] ?? '';\n    if (prefix.contains('~')) return 0;\n    if (prefix.contains('&')) return 1;\n    if (prefix.contains('@')) return 2;\n    if (prefix.contains('%')) return 3;\n    if (prefix.contains('+')) return 4;\n    return 5;\n  }\n\n  Color privateTabColor(String user, {bool selected = false, bool unread = false}) {\n    final base = nickColor(user);\n    if (selected) return Color.lerp(base, const Color(0xFF11161C), 0.45)!;\n    if (unread) return Color.lerp(base, const Color(0xFF11161C), 0.25)!;\n    return Color.lerp(base, const Color(0xFF252D36), 0.55)!;\n  }\n\n"""
+          if 'int rankWeight(String user)' not in s:
+              s = s.replace(marker, helpers + marker)
+
+          s = s.replace(
+              "final users = current.users.toList()..sort();",
+              "final users = current.users.toList()..sort((a, b) { final rank = rankWeight(a).compareTo(rankWeight(b)); return rank != 0 ? rank : a.toLowerCase().compareTo(b.toLowerCase()); });"
+          )
+
+          s = s.replace(
+              "Material(color: selected ? const Color(0xFF53677D) : (room.privateChat && hasUnread && blink ? const Color(0xFF7A435C) : const Color(0xFF252D36)),",
+              "Material(color: room.privateChat ? privateTabColor(room.name, selected: selected, unread: hasUnread && blink) : (selected ? const Color(0xFF53677D) : const Color(0xFF252D36)),",
+          )
+
+          s = s.replace(
+              "Icon(room.privateChat ? Icons.person_outline : Icons.tag, size: 16),",
+              "Icon(room.privateChat ? Icons.person_outline : Icons.forum_outlined, size: 16),",
+          )
+
+          old = """                  child: RichText(text: TextSpan(children: [\n                    TextSpan(text: '$user  ', style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))),\n                    TextSpan(text: item.trailing, style: const TextStyle(color: Colors.white)),\n                  ])),\n"""
+          new = """                  child: RichText(text: TextSpan(children: [\n                    TextSpan(text: '$user: ', style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))),\n                    TextSpan(text: cleanIrcText(item.trailing), style: const TextStyle(color: Colors.white)),\n                  ])),\n"""
           s = s.replace(old, new)
-
-          # ERR_NICKNAMEINUSE: keep socket alive and show change-nick dialog.
-          old = """      if (numeric != null && numeric >= 400 && numeric != 422) {
-        status = friendlyError(m);
-        if ({431, 432, 433, 436, 437, 451, 464, 465}.contains(numeric)) {
-          connected = false;
-          connecting = false;
-          reconnectTimer?.cancel();
-        }
-      }
-"""
-          new = """      if (numeric != null && numeric >= 400 && numeric != 422) {
-        status = friendlyError(m);
-        if ({431, 432, 436, 437, 451, 464, 465}.contains(numeric)) {
-          connected = false;
-          connecting = false;
-          reconnectTimer?.cancel();
-        }
-        if (numeric == 433) WidgetsBinding.instance.addPostFrameCallback((_) => _showNickTakenDialog());
-      }
-"""
-          s = s.replace(old, new)
-
-          marker = '  Future<void> connect({bool automatic = false}) async {'
-          if 'void _showNickTakenDialog()' not in s:
-              dialog = '''  void _showNickTakenDialog() {
-    if (!mounted) return;
-    final controller = TextEditingController(text: nick.text);
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nickname en uso'),
-        content: TextField(controller: controller, autofocus: true, decoration: const InputDecoration(labelText: 'Cambiar nickname')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          FilledButton(onPressed: () {
-            final value = controller.text.trim();
-            if (value.isEmpty) return;
-            nick.text = value;
-            client.changeNick(value);
-            Navigator.pop(ctx);
-          }, child: const Text('Cambiar')),
-        ],
-      ),
-    ).whenComplete(controller.dispose);
-  }
-
-'''
-              s = s.replace(marker, dialog + marker)
 
           p.write_text(s, encoding='utf-8')
           PY
 
+          if ! git diff --quiet -- lib/main.dart; then
+            git config user.name 'JersIRC Bot'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add lib/main.dart
+            git commit -m 'Fix IRC message formatting and colors'
+            git push
+          fi
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-
       - name: Generate Android platform
         run: flutter create --platforms=android --project-name jersirc .
-
-      - name: Enable Android internet
+      - name: Enable Android internet permission
         run: sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
-
       - name: Get dependencies
         run: flutter pub get
       - name: Analyze
