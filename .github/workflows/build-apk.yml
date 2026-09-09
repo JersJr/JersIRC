@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -14,6 +14,64 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Apply JersIRC chat UI fixes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('lib/main.dart')
+          s = p.read_text(encoding='utf-8')
+
+          if 'final Set<String> ignoredUsers = {};' not in s:
+              s = s.replace(
+                  '  bool userHasScrolled = false;\n',
+                  '  bool userHasScrolled = false;\n  final Set<String> ignoredUsers = {};\n'
+              )
+
+          old = """      if ((m.command == 'PRIVMSG' || m.command == 'NOTICE') && m.params.isNotEmpty) {\n        final target = m.params.first;\n"""
+          new = """      if ((m.command == 'PRIVMSG' || m.command == 'NOTICE') && m.params.isNotEmpty) {\n        final target = m.params.first;\n        if (m.nick != null && ignoredUsers.contains(m.nick!.toLowerCase())) return;\n"""
+          s = s.replace(old, new)
+
+          old = """  void showUserActions(String user) {\n    showModalBottomSheet<void>(\n      context: context,\n      builder: (context) => SafeArea(child: Wrap(children: [\n        ListTile(leading: const Icon(Icons.alternate_email), title: Text('Mencionar @$user'), onTap: () {\n          Navigator.pop(context);\n          message.text = '${message.text}$user ';\n          message.selection = TextSelection.collapsed(offset: message.text.length);\n        }),\n        ListTile(leading: const Icon(Icons.chat_bubble_outline), title: const Text('Privado'), onTap: () {\n          Navigator.pop(context);\n          openPrivate(user);\n        }),\n      ])),\n    );\n  }\n"""
+          new = """  void showUserActions(String user) {\n    final ignored = ignoredUsers.contains(user.toLowerCase());\n    showModalBottomSheet<void>(\n      context: context,\n      builder: (context) => SafeArea(child: Wrap(children: [\n        ListTile(leading: const Icon(Icons.alternate_email), title: Text('Mencionar @$user'), onTap: () {\n          Navigator.pop(context);\n          message.text = '${message.text}$user ';\n          message.selection = TextSelection.collapsed(offset: message.text.length);\n        }),\n        ListTile(leading: const Icon(Icons.chat_bubble_outline), title: const Text('Privado'), onTap: () {\n          Navigator.pop(context);\n          openPrivate(user);\n        }),\n        ListTile(\n          leading: Icon(ignored ? Icons.visibility : Icons.block_outlined),\n          title: Text(ignored ? 'Dejar de ignorar' : 'Ignorar'),\n          onTap: () {\n            Navigator.pop(context);\n            setState(() {\n              final key = user.toLowerCase();\n              if (ignored) {\n                ignoredUsers.remove(key);\n              } else {\n                ignoredUsers.add(key);\n              }\n            });\n          },\n        ),\n      ])),\n    );\n  }\n"""
+          s = s.replace(old, new)
+
+          marker = "  Color nickColor(String user) {\n"
+          helpers = """  String cleanIrcText(String text) {\n    var cleaned = text.replaceAll(RegExp(r'\\u0003(?:\\d{1,2}(?:,\\d{1,2})?)?'), '');\n    cleaned = cleaned.replaceAll(RegExp(r'[\\u0002\\u000F\\u0016\\u001D\\u001F]'), '');\n    return cleaned;\n  }\n\n  int rankWeight(String user) {\n    final prefix = current.modes[user] ?? '';\n    if (prefix.contains('~')) return 0;\n    if (prefix.contains('&')) return 1;\n    if (prefix.contains('@')) return 2;\n    if (prefix.contains('%')) return 3;\n    if (prefix.contains('+')) return 4;\n    return 5;\n  }\n\n  Color privateTabColor(String user, {bool selected = false, bool unread = false}) {\n    final base = nickColor(user);\n    if (selected) return Color.lerp(base, const Color(0xFF11161C), 0.45)!;\n    if (unread) return Color.lerp(base, const Color(0xFF11161C), 0.25)!;\n    return Color.lerp(base, const Color(0xFF252D36), 0.55)!;\n  }\n\n"""
+          if 'int rankWeight(String user)' not in s:
+              s = s.replace(marker, helpers + marker)
+
+          s = s.replace(
+              "final users = current.users.toList()..sort();",
+              "final users = current.users.toList()..sort((a, b) { final rank = rankWeight(a).compareTo(rankWeight(b)); return rank != 0 ? rank : a.toLowerCase().compareTo(b.toLowerCase()); });"
+          )
+
+          s = s.replace(
+              "Material(color: selected ? const Color(0xFF53677D) : (room.privateChat && hasUnread && blink ? const Color(0xFF7A435C) : const Color(0xFF252D36)),",
+              "Material(color: room.privateChat ? privateTabColor(room.name, selected: selected, unread: hasUnread && blink) : (selected ? const Color(0xFF53677D) : const Color(0xFF252D36)),",
+          )
+
+          s = s.replace(
+              "Icon(room.privateChat ? Icons.person_outline : Icons.tag, size: 16),",
+              "Icon(room.privateChat ? Icons.person_outline : Icons.forum_outlined, size: 16),",
+          )
+
+          old = """                  child: RichText(text: TextSpan(children: [\n                    TextSpan(text: '$user  ', style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))),\n                    TextSpan(text: item.trailing, style: const TextStyle(color: Colors.white)),\n                  ])),\n"""
+          new = """                  child: RichText(text: TextSpan(children: [\n                    TextSpan(text: '$user: ', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),\n                    TextSpan(text: cleanIrcText(item.trailing), style: const TextStyle(color: Colors.white)),\n                  ])),\n"""
+          s = s.replace(old, new)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          if ! git diff --quiet -- lib/main.dart; then
+            git config user.name 'JersIRC Bot'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add lib/main.dart
+            git commit -m 'Fix IRC message formatting, ignore and room tabs'
+            git push
+          fi
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
