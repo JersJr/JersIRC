@@ -184,11 +184,13 @@ class _IrcHomePageState extends State<IrcHomePage> {
 
   Future<void> disconnect() async {
     await client.disconnect();
-    if (mounted) setState(() {
-      connected = false;
-      connecting = false;
-      status = 'Desconectado';
-    });
+    if (mounted) {
+      setState(() {
+        connected = false;
+        connecting = false;
+        status = 'Desconectado';
+      });
+    }
   }
 
   void joinChannel() {
@@ -260,48 +262,225 @@ class _IrcHomePageState extends State<IrcHomePage> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
           backgroundColor: const Color(0xFF151B22),
-          title: const Row(children: [Icon(Icons.forum_rounded, size: 22), SizedBox(width: 8), Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700))]),
-          actions: [Padding(padding: const EdgeInsets.only(right: 14), child: Row(children: [Icon(Icons.circle, size: 9, color: connected ? const Color(0xFF8FB59B) : Colors.grey), const SizedBox(width: 6), SizedBox(width: 190, child: Text(status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)))]))],
+          title: const Row(
+            children: [
+              Icon(Icons.forum_rounded, size: 22),
+              SizedBox(width: 8),
+              Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
+            ],
+          ),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Row(
+                children: [
+                  Icon(Icons.circle, size: 9, color: connected ? const Color(0xFF8FB59B) : Colors.grey),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: 190,
+                    child: Text(status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         drawer: buildDrawer(),
-        body: Column(children: [
-          if (rooms.isNotEmpty) buildTabs(),
-          Expanded(child: Row(children: [Expanded(child: active == null ? buildWelcome() : buildChat()), if (active != null) buildUsers()])),
-          buildComposer(),
-        ]),
+        body: Column(
+          children: [
+            if (rooms.isNotEmpty) buildTabs(),
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(child: active == null ? buildWelcome() : buildChat()),
+                  if (active != null) buildUsers(),
+                ],
+              ),
+            ),
+            buildComposer(),
+          ],
+        ),
       );
 
-  Widget buildTabs() => SizedBox(height: 56, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7), children: rooms.values.map((room) => Padding(padding: const EdgeInsets.symmetric(horizontal: 3), child: ChoiceChip(label: Row(mainAxisSize: MainAxisSize.min, children: [Icon(room.privateChat ? Icons.person_outline : Icons.tag, size: 16), const SizedBox(width: 5), Text(room.name), if (room.unread > 0) ...[const SizedBox(width: 5), Text('${room.unread}')]]), selected: room.name == active, onSelected: (_) => setState(() { active = room.name; room.unread = 0; }))).toList()));
+  Widget buildTabs() {
+    final tabs = rooms.values.map((room) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: ChoiceChip(
+          label: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(room.privateChat ? Icons.person_outline : Icons.tag, size: 16),
+              const SizedBox(width: 5),
+              Text(room.name),
+              if (room.unread > 0) ...[
+                const SizedBox(width: 5),
+                Text('${room.unread}'),
+              ],
+            ],
+          ),
+          selected: room.name == active,
+          onSelected: (_) => setState(() {
+            active = room.name;
+            room.unread = 0;
+          }),
+        ),
+      );
+    }).toList();
 
-  Widget buildDrawer() => Drawer(backgroundColor: const Color(0xFF151B22), child: SafeArea(child: ListView(padding: const EdgeInsets.all(16), children: [
-    const Center(child: Text('JersIRC', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800))),
-    const Center(child: Text('IRC, simple y claro', style: TextStyle(color: Colors.white54))),
-    const SizedBox(height: 22),
-    const Text('CONEXIÓN', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
-    const SizedBox(height: 10),
-    TextField(controller: host, decoration: const InputDecoration(labelText: 'Servidor')),
-    const SizedBox(height: 8),
-    Row(children: [Expanded(child: TextField(controller: port, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto'))), const SizedBox(width: 8), Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname')))]),
-    SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('TLS / SSL'), subtitle: Text(secure ? 'Conexión cifrada' : 'Conexión normal'), value: secure, onChanged: connecting ? null : (value) => setState(() => secure = value)),
-    const SizedBox(height: 4),
-    FilledButton.icon(onPressed: connecting ? null : (connected ? disconnect : connect), icon: Icon(connected ? Icons.link_off : Icons.link), label: Text(connected ? 'Desconectar' : 'Conectar')),
-    const Divider(height: 28, color: Colors.white12),
-    const Text('UNIRSE A CANAL', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
-    const SizedBox(height: 8),
-    Row(children: [Expanded(child: TextField(controller: channel, decoration: const InputDecoration(hintText: '#canal'))), const SizedBox(width: 8), IconButton.filled(onPressed: connected ? joinChannel : null, icon: const Icon(Icons.add))]),
-    const SizedBox(height: 28),
-    Center(child: Text('UTF-8', style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(.25), letterSpacing: 2))),
-  ])));
+    return SizedBox(
+      height: 56,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        children: tabs,
+      ),
+    );
+  }
 
-  Widget buildWelcome() => Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.forum_outlined, size: 62, color: Colors.white.withOpacity(.4)), const SizedBox(height: 14), const Text('Bienvenido a JersIRC', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)), const SizedBox(height: 8), const Text('Configura servidor, puerto, TLS y nickname', style: TextStyle(color: Colors.white54))]));
+  Widget buildDrawer() {
+    return Drawer(
+      backgroundColor: const Color(0xFF151B22),
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            const Center(child: Text('JersIRC', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800))),
+            const Center(child: Text('IRC, simple y claro', style: TextStyle(color: Colors.white54))),
+            const SizedBox(height: 22),
+            const Text('CONEXIÓN', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
+            const SizedBox(height: 10),
+            TextField(controller: host, decoration: const InputDecoration(labelText: 'Servidor')),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: TextField(controller: port, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto'))),
+                const SizedBox(width: 8),
+                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname'))),
+              ],
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('TLS / SSL'),
+              subtitle: Text(secure ? 'Conexión cifrada' : 'Conexión normal'),
+              value: secure,
+              onChanged: connecting ? null : (value) => setState(() => secure = value),
+            ),
+            const SizedBox(height: 4),
+            FilledButton.icon(
+              onPressed: connecting ? null : (connected ? disconnect : connect),
+              icon: Icon(connected ? Icons.link_off : Icons.link),
+              label: Text(connected ? 'Desconectar' : 'Conectar'),
+            ),
+            const Divider(height: 28, color: Colors.white12),
+            const Text('UNIRSE A CANAL', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: TextField(controller: channel, decoration: const InputDecoration(hintText: '#canal'))),
+                const SizedBox(width: 8),
+                IconButton.filled(onPressed: connected ? joinChannel : null, icon: const Icon(Icons.add)),
+              ],
+            ),
+            const SizedBox(height: 28),
+            Center(child: Text('UTF-8', style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(.25), letterSpacing: 2))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildWelcome() => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.forum_outlined, size: 62, color: Colors.white.withOpacity(.4)),
+            const SizedBox(height: 14),
+            const Text('Bienvenido a JersIRC', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            const Text('Configura servidor, puerto, TLS y nickname', style: TextStyle(color: Colors.white54)),
+          ],
+        ),
+      );
 
   Widget buildChat() {
     final items = current.messages;
-    if (items.isEmpty) return Center(child: Text(current.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)));
-    return ListView.builder(padding: const EdgeInsets.all(16), itemCount: items.length, itemBuilder: (_, index) { final item = items[index]; return Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: RichText(text: TextSpan(children: [TextSpan(text: '${item.nick ?? 'Sistema'}  ', style: const TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: item.trailing, style: const TextStyle(color: Colors.white))]))); });
+    if (items.isEmpty) {
+      return Center(child: Text(current.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: items.length,
+      itemBuilder: (_, index) {
+        final item = items[index];
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(text: '${item.nick ?? 'Sistema'}  ', style: const TextStyle(fontWeight: FontWeight.bold)),
+                TextSpan(text: item.trailing, style: const TextStyle(color: Colors.white)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
-  Widget buildUsers() { final users = current.users.toList()..sort(); return Container(width: 135, decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))), child: ListView(padding: const EdgeInsets.all(10), children: [const Text('USUARIOS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54)), const SizedBox(height: 8), ...users.map((user) => ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: const Icon(Icons.person_outline, size: 16), title: Text(user, overflow: TextOverflow.ellipsis), onTap: () => openPrivate(user))) ]); }
+  Widget buildUsers() {
+    final users = current.users.toList()..sort();
+    return Container(
+      width: 135,
+      decoration: const BoxDecoration(
+        color: Color(0xFF151B22),
+        border: Border(left: BorderSide(color: Colors.white10)),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.all(10),
+        children: [
+          const Text('USUARIOS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54)),
+          const SizedBox(height: 8),
+          ...users.map(
+            (user) => ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.person_outline, size: 16),
+              title: Text(user, overflow: TextOverflow.ellipsis),
+              onTap: () => openPrivate(user),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  Widget buildComposer() => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(10, 8, 10, 10), child: Row(children: [Expanded(child: TextField(controller: message, enabled: connected && active != null, onSubmitted: (_) => sendMessage(), decoration: InputDecoration(hintText: connected ? 'Escribe un mensaje o /comando' : 'Conecta un servidor para chatear', prefixIcon: const Icon(Icons.chat_bubble_outline, size: 19), border: OutlineInputBorder(borderRadius: BorderRadius.circular(18))))), const SizedBox(width: 8), IconButton.filled(onPressed: connected && active != null ? sendMessage : null, icon: const Icon(Icons.send_rounded))])));
+  Widget buildComposer() {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: message,
+                enabled: connected && active != null,
+                onSubmitted: (_) => sendMessage(),
+                decoration: InputDecoration(
+                  hintText: connected ? 'Escribe un mensaje o /comando' : 'Conecta un servidor para chatear',
+                  prefixIcon: const Icon(Icons.chat_bubble_outline, size: 19),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filled(
+              onPressed: connected && active != null ? sendMessage : null,
+              icon: const Icon(Icons.send_rounded),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
