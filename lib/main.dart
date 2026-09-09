@@ -321,9 +321,7 @@ class _IrcHomePageState extends State<IrcHomePage> {
     if (room == null) return;
     if (!room.privateChat && connected) client.part(name);
     rooms.remove(name);
-    if (active == name) {
-      active = rooms.isEmpty ? null : rooms.keys.first;
-    }
+    if (active == name) active = rooms.isEmpty ? null : rooms.keys.first;
     setState(() {});
   }
 
@@ -337,7 +335,6 @@ class _IrcHomePageState extends State<IrcHomePage> {
               Navigator.pop(context);
               message.text = '${message.text}$user ';
               message.selection = TextSelection.collapsed(offset: message.text.length);
-              FocusScope.of(this.context).requestFocus(FocusNode());
             }),
             ListTile(leading: const Icon(Icons.chat_bubble_outline), title: const Text('Privado'), onTap: () {
               Navigator.pop(context);
@@ -356,10 +353,9 @@ class _IrcHomePageState extends State<IrcHomePage> {
   Color nickColor(String user) {
     var hash = 0;
     for (final c in user.codeUnits) hash = (hash * 31 + c) & 0x7fffffff;
-    final colors = [
-      const Color(0xFF7CB8FF), const Color(0xFFFFA6C9), const Color(0xFFB9E986),
-      const Color(0xFFFFCC80), const Color(0xFFC7A7FF), const Color(0xFF72E0D1),
-      const Color(0xFFFF9E80), const Color(0xFF9FA8DA),
+    const colors = [
+      Color(0xFF7CB8FF), Color(0xFFFFA6C9), Color(0xFFB9E986), Color(0xFFFFCC80),
+      Color(0xFFC7A7FF), Color(0xFF72E0D1), Color(0xFFFF9E80), Color(0xFF9FA8DA),
     ];
     return colors[hash % colors.length];
   }
@@ -414,7 +410,14 @@ class _IrcHomePageState extends State<IrcHomePage> {
               Text(room.name),
               if (room.unread > 0) ...[const SizedBox(width: 5), Text('${room.unread}')],
               const SizedBox(width: 2),
-              GestureDetector(onTap: () => closeRoom(room.name), child: const Icon(Icons.close, size: 15)),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => closeRoom(room.name),
+                  child: const Padding(padding: EdgeInsets.all(5), child: Icon(Icons.close, size: 15)),
+                ),
+              ),
             ]),
             selected: room.name == active,
             onSelected: (_) => setState(() { active = room.name; room.unread = 0; }),
@@ -487,17 +490,34 @@ class _IrcHomePageState extends State<IrcHomePage> {
 
   Widget buildUsers() {
     final users = current.users.toList()..sort();
-    final panel = GestureDetector(
-      onHorizontalDragUpdate: (details) {
-        if (details.delta.dx < -4) setState(() => usersVisible = false);
+    if (!usersVisible) {
+      return GestureDetector(
+        onHorizontalDragUpdate: (details) {
+          if (details.delta.dx > 3) setState(() => usersVisible = true);
+        },
+        onTap: () => setState(() => usersVisible = true),
+        child: Container(
+          width: 42,
+          decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),
+          child: const Center(child: Tooltip(message: 'Mostrar usuarios', child: Icon(Icons.people_alt_outlined, size: 21))),
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        if ((details.primaryVelocity ?? 0) < -150) setState(() => usersVisible = false);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        width: usersVisible ? 150 : 0,
+        width: 155,
         clipBehavior: Clip.hardEdge,
         decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),
-        child: SizedBox(width: 150, child: ListView(padding: const EdgeInsets.all(8), children: [
-          Row(children: [const Expanded(child: Text('USUARIOS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54))), IconButton(onPressed: () => setState(() => usersVisible = false), icon: const Icon(Icons.chevron_right, size: 20))]),
+        child: SizedBox(width: 155, child: ListView(padding: const EdgeInsets.all(8), children: [
+          Row(children: [
+            const Expanded(child: Text('USUARIOS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54))),
+            IconButton(tooltip: 'Ocultar usuarios', onPressed: () => setState(() => usersVisible = false), icon: const Icon(Icons.keyboard_double_arrow_right, size: 20)),
+          ]),
           const SizedBox(height: 4),
           ...users.map((user) {
             final prefix = current.modes[user] ?? '';
@@ -511,11 +531,6 @@ class _IrcHomePageState extends State<IrcHomePage> {
           }),
         ])),
       ),
-    );
-    if (usersVisible) return panel;
-    return GestureDetector(
-      onHorizontalDragUpdate: (details) { if (details.delta.dx > 4) setState(() => usersVisible = true); },
-      child: Container(width: 24, decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))), child: const Center(child: Icon(Icons.chevron_left, size: 18))),
     );
   }
 
