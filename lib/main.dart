@@ -395,8 +395,8 @@ class _IrcHomePageState extends State<IrcHomePage> {
   }
 
   String cleanIrcText(String text) {
-    var cleaned = text.replaceAll(RegExp(r'\u0003(?:\d{1,2}(?:,\d{1,2})?)?'), '');
-    cleaned = cleaned.replaceAll(RegExp(r'[\u0002\u000F\u0016\u001D\u001F]'), '');
+    var cleaned = text.replaceAll(RegExp('\u0003(?:\d{1,2}(?:,\d{1,2})?)?'), '');
+    cleaned = cleaned.replaceAll(RegExp('[\u0002\u000F\u0016\u001D\u001F]'), '');
     return cleaned;
   }
 
@@ -466,15 +466,15 @@ class _IrcHomePageState extends State<IrcHomePage> {
 
   Widget buildTabs() {
     return SizedBox(
-      height: 58,
+      height: 44,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         children: rooms.values.map((room) {
           final selected = room.name == active;
           final hasUnread = room.unread > 0;
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 2),
             child: Material(
               color: selected ? const Color(0xFF53677D) : (room.privateChat && hasUnread && blink ? const Color(0xFF7A435C) : const Color(0xFF252D36)),
               borderRadius: BorderRadius.circular(18),
@@ -482,22 +482,22 @@ class _IrcHomePageState extends State<IrcHomePage> {
                 borderRadius: BorderRadius.circular(18),
                 onTap: () => setState(() { active = room.name; room.unread = 0; userHasScrolled = false; _scrollToBottom(force: true); }),
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 12, right: 5),
+                  padding: const EdgeInsets.only(left: 8, right: 3),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(room.privateChat ? Icons.person_outline : Icons.forum_outlined, size: 16),
-                    const SizedBox(width: 5),
-                    AnimatedOpacity(opacity: room.privateChat && hasUnread ? (blink ? 1 : .35) : 1, duration: const Duration(milliseconds: 120), child: Text(room.name)),
+                    Icon(room.privateChat ? Icons.person_outline : Icons.forum_outlined, size: 14),
+                    const SizedBox(width: 4),
+                    AnimatedOpacity(opacity: room.privateChat && hasUnread ? (blink ? 1 : .35) : 1, duration: const Duration(milliseconds: 120), child: Text(room.name, style: const TextStyle(fontSize: 12))),
                     if (hasUnread) ...[
-                      const SizedBox(width: 6),
-                      Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.redAccent.withOpacity(.85), borderRadius: BorderRadius.circular(10)), child: Text('${room.unread}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
+                      const SizedBox(width: 4),
+                      Container(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1), decoration: BoxDecoration(color: Colors.redAccent.withOpacity(.85), borderRadius: BorderRadius.circular(10)), child: Text('${room.unread}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold))),
                     ],
                     const SizedBox(width: 2),
                     IconButton(
                       tooltip: 'Cerrar ${room.name}',
                       onPressed: () => closeRoom(room.name),
-                      padding: const EdgeInsets.all(5),
-                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                      icon: const Icon(Icons.close, size: 16),
+                      padding: const EdgeInsets.all(2),
+                      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                      icon: const Icon(Icons.close, size: 14),
                     ),
                   ]),
                 ),
@@ -560,7 +560,7 @@ class _IrcHomePageState extends State<IrcHomePage> {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   child: RichText(text: TextSpan(children: [
-                    TextSpan(text: '$user: ', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    TextSpan(text: '$user: ', style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))),
                     TextSpan(text: cleanIrcText(item.trailing), style: const TextStyle(color: Colors.white)),
                   ])),
                 );
@@ -570,21 +570,30 @@ class _IrcHomePageState extends State<IrcHomePage> {
   }
 
   Widget buildUsers() {
+    if (current.privateChat) return const SizedBox.shrink();
     final users = current.users.toList()..sort((a, b) { final rank = rankWeight(a).compareTo(rankWeight(b)); return rank != 0 ? rank : a.toLowerCase().compareTo(b.toLowerCase()); });
     if (!usersVisible) {
       return GestureDetector(
         onHorizontalDragUpdate: (details) { if (details.delta.dx > 3) setState(() => usersVisible = true); },
         onTap: () => setState(() => usersVisible = true),
-        child: Container(width: 42, decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))), child: const Center(child: Icon(Icons.people_alt_outlined, size: 21))),
+        child: Container(
+          width: 30,
+          decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),
+          child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.people_alt_outlined, size: 14),
+            const SizedBox(height: 1),
+            Text('${current.users.length}', style: const TextStyle(fontSize: 9, color: Colors.white70)),
+          ])),
+        ),
       );
     }
     return GestureDetector(
       onHorizontalDragEnd: (details) { if ((details.primaryVelocity ?? 0) < -150) setState(() => usersVisible = false); },
       child: Container(
-        width: 155,
+        width: 148,
         decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),
-        child: ListView(padding: const EdgeInsets.all(8), children: [
-          Row(children: [const Expanded(child: Text('USUARIOS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54))), IconButton(tooltip: 'Ocultar usuarios', onPressed: () => setState(() => usersVisible = false), icon: const Icon(Icons.keyboard_double_arrow_right, size: 20))]),
+        child: ListView(padding: const EdgeInsets.all(6), children: [
+          Row(children: [const Expanded(child: Text('USUARIOS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54))), IconButton(tooltip: 'Ocultar usuarios', onPressed: () => setState(() => usersVisible = false), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28), icon: const Icon(Icons.keyboard_double_arrow_right, size: 17))]),
           const SizedBox(height: 4),
           ...users.map((user) {
             final prefix = current.modes[user] ?? '';
