@@ -79,13 +79,16 @@ jobs:
           p = Path('lib/main.dart')
           s = p.read_text(encoding='utf-8')
 
-          # Nick color stays on the sender label; message text itself stays white.
           s = s.replace(
               "TextSpan(text: '$user: ', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),",
               "TextSpan(text: '$user: ', style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))),"
           )
 
-          # Compact room/PV tabs.
+          s = s.replace(
+              "Material(color: selected ? const Color(0xFF53677D) : (room.privateChat && hasUnread && blink ? const Color(0xFF7A435C) : const Color(0xFF252D36)),",
+              "Material(color: room.privateChat ? privateTabColor(room.name, selected: selected, unread: hasUnread && blink) : (selected ? const Color(0xFF53677D) : const Color(0xFF252D36)),",
+          )
+
           s = s.replace("height: 58,", "height: 44,")
           s = s.replace("padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),", "padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),")
           s = s.replace("padding: const EdgeInsets.symmetric(horizontal: 3),", "padding: const EdgeInsets.symmetric(horizontal: 2),")
@@ -97,23 +100,19 @@ jobs:
           s = s.replace("fontSize: 11, fontWeight: FontWeight.bold", "fontSize: 10, fontWeight: FontWeight.bold", 1)
           s = s.replace("padding: const EdgeInsets.all(5),\n                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),\n                      icon: const Icon(Icons.close, size: 16),", "padding: const EdgeInsets.all(2),\n                      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),\n                      icon: const Icon(Icons.close, size: 14),")
 
-          # In private chats the channel user list is not shown.
           s = s.replace(
               "  Widget buildUsers() {\n    final users = current.users.toList()",
               "  Widget buildUsers() {\n    if (current.privateChat) return const SizedBox.shrink();\n    final users = current.users.toList()"
           )
 
-          # Very small collapsed users strip showing count, tappable/swipeable.
           old = """        child: Container(width: 42, decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))), child: const Center(child: Icon(Icons.people_alt_outlined, size: 21))),\n"""
           new = """        child: Container(\n          width: 30,\n          decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),\n          child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [\n            const Icon(Icons.people_alt_outlined, size: 14),\n            const SizedBox(height: 1),\n            Text('${current.users.length}', style: const TextStyle(fontSize: 9, color: Colors.white70)),\n          ])),\n        ),\n"""
           s = s.replace(old, new)
 
-          # More compact visible user panel.
           s = s.replace("width: 155,", "width: 148,")
           s = s.replace("padding: const EdgeInsets.all(8), children: [", "padding: const EdgeInsets.all(6), children: [")
           s = s.replace("IconButton(tooltip: 'Ocultar usuarios', onPressed: () => setState(() => usersVisible = false), icon: const Icon(Icons.keyboard_double_arrow_right, size: 20))", "IconButton(tooltip: 'Ocultar usuarios', onPressed: () => setState(() => usersVisible = false), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28), icon: const Icon(Icons.keyboard_double_arrow_right, size: 17))")
 
-          # Avoid showing raw IRC formatting/control characters in chat.
           s = s.replace(
               "String cleanIrcText(String text) {\n    var cleaned = text.replaceAll(RegExp(r'\\u0003(?:\\d{1,2}(?:,\\d{1,2})?)?'), '');\n    cleaned = cleaned.replaceAll(RegExp(r'[\\u0002\\u000F\\u0016\\u001D\\u001F]'), '');\n    return cleaned;\n  }",
               "String cleanIrcText(String text) {\n    var cleaned = text.replaceAll(RegExp('\\u0003(?:\\d{1,2}(?:,\\d{1,2})?)?'), '');\n    cleaned = cleaned.replaceAll(RegExp('[\\u0002\\u000F\\u0016\\u001D\\u001F]'), '');\n    return cleaned;\n  }"
