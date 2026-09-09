@@ -26,6 +26,7 @@ class ChatRoom {
   final bool privateChat;
   final List<IrcMessage> messages = [];
   final Set<String> users = {};
+  final Map<String, String> modes = {};
   int unread = 0;
 }
 
@@ -44,10 +45,14 @@ class _IrcHomePageState extends State<IrcHomePage> {
   final message = TextEditingController();
   final rooms = <String, ChatRoom>{};
   StreamSubscription<IrcMessage>? subscription;
+  Timer? reconnectTimer;
   String? active;
   bool connected = false;
   bool connecting = false;
   bool secure = false;
+  bool usersVisible = true;
+  bool manualDisconnect = false;
+  bool showSuggestions = false;
   String status = 'Desconectado';
 
   ChatRoom get current => rooms[active] ?? ChatRoom(active ?? 'JersIRC');
@@ -56,6 +61,41 @@ class _IrcHomePageState extends State<IrcHomePage> {
   void initState() {
     super.initState();
     subscription = client.messages.listen(handleMessage);
+    message.addListener(_onMessageChanged);
+  }
+
+  void _onMessageChanged() {
+    if (!mounted) return;
+    final text = message.text;
+    final match = RegExp(r'(^|\s)(\S*)$').firstMatch(text);
+    final partial = match?.group(2) ?? '';
+    final shouldShow = connected && active != null && partial.length >= 1 &&
+        current.users.any((u) => u.toLowerCase().startsWith(partial.toLowerCase()));
+    if (showSuggestions != shouldShow) setState(() => showSuggestions = shouldShow);
+  }
+
+  List<String> get nickSuggestions {
+    final text = message.text;
+    final match = RegExp(r'(^|\s)(\S*)$').firstMatch(text);
+    final partial = match?.group(2) ?? '';
+    if (partial.isEmpty) return [];
+    return current.users
+        .where((u) => u.toLowerCase().startsWith(partial.toLowerCase()))
+        .take(8)
+        .toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  }
+
+  void chooseNick(String user) {
+    final text = message.text;
+    final match = RegExp(r'(^|\s)(\S*)$').firstMatch(text);
+    if (match == null) return;
+    final prefix = text.substring(0, match.start + (match.group(1)?.length ?? 0));
+    message.value = TextEditingValue(
+      text: '$prefix$user ',
+      selection: TextSelection.collapsed(offset: '$prefix$user '.length),
+    );
+    setState(() => showSuggestions = false);
   }
 
   String friendlyError(IrcMessage m) {
@@ -77,13 +117,26 @@ class _IrcHomePageState extends State<IrcHomePage> {
     setState(() {
       if (m.command == 'DISCONNECTED') {
         connected = false;
-        if (!connecting) status = 'Desconectado';
+        if (!manualDisconnect) {
+          connecting = false;
+          status = 'Conexión perdida — reconectando...';
+          _scheduleReconnect();
+        } else {
+          connecting = false;
+          status = 'Desconectado';
+        }
         return;
       }
       if (m.command == 'ERROR') {
         connected = false;
-        connecting = false;
-        status = m.trailing.isEmpty ? 'Error de conexión' : 'Error: ${m.trailing}';
+        if (!manualDisconnect) {
+          connecting = false;
+          status = 'Error — reconectando...';
+          _scheduleReconnect();
+        } else {
+          connecting = false;
+          status = m.trailing.isEmpty ? 'Error de conexión' : 'Error: ${m.trailing}';
+        }
         return;
       }
       if (m.command == '001') status = 'Conectado';
@@ -94,6 +147,7 @@ class _IrcHomePageState extends State<IrcHomePage> {
         if ({431, 432, 433, 436, 437, 451, 464, 465}.contains(numeric)) {
           connected = false;
           connecting = false;
+          reconnectTimer?.cancel();
         }
       }
 
@@ -105,20 +159,29 @@ class _IrcHomePageState extends State<IrcHomePage> {
       }
       if (m.command == 'PART' && m.params.isNotEmpty) {
         final room = rooms[m.params.first];
-        if (room != null && m.nick != null) room.users.remove(m.nick);
+        if (room != null && m.nick != null) {
+          room.users.remove(m.nick);
+          room.modes.remove(m.nick);
+        }
       }
       if (m.command == 'QUIT' && m.nick != null) {
-        for (final room in rooms.values) room.users.remove(m.nick);
+        for (final room in rooms.values) {
+          room.users.remove(m.nick);
+          room.modes.remove(m.nick);
+        }
       }
       if (m.command == 'NICK' && m.nick != null && m.params.isNotEmpty) {
         final oldNick = m.nick!;
         final newNick = m.params.last;
         for (final room in rooms.values) {
           if (room.users.remove(oldNick)) room.users.add(newNick);
+          final mode = room.modes.remove(oldNick);
+          if (mode != null) room.modes[newNick] = mode;
         }
       }
       if (m.command == 'KICK' && m.params.length >= 2) {
         rooms[m.params.first]?.users.remove(m.params[1]);
+        rooms[m.params.first]?.modes.remove(m.params[1]);
       }
       if ((m.command == 'PRIVMSG' || m.command == 'NOTICE') && m.params.isNotEmpty) {
         final target = m.params.first;
@@ -131,19 +194,50 @@ class _IrcHomePageState extends State<IrcHomePage> {
       }
       if (m.command == '353' && m.params.length >= 3) {
         final room = rooms.putIfAbsent(m.params[2], () => ChatRoom(m.params[2]));
-        for (final user in m.trailing.split(RegExp(r'\s+'))) {
-          if (user.isNotEmpty) room.users.add(user.replaceFirst(RegExp(r'^[~&@%+]+'), ''));
+        for (final rawUser in m.trailing.split(RegExp(r'\s+'))) {
+          if (rawUser.isEmpty) continue;
+          final prefixMatch = RegExp(r'^([~&@%+]+)(.+)$').firstMatch(rawUser);
+          final prefix = prefixMatch?.group(1) ?? '';
+          final user = prefixMatch?.group(2) ?? rawUser;
+          if (user.isEmpty) continue;
+          room.users.add(user);
+          if (prefix.isNotEmpty) room.modes[user] = prefix;
         }
       }
       if (m.command == '366' && m.params.isNotEmpty) {
         final roomName = m.params.length > 1 ? m.params[1] : m.params.first;
         if (rooms.containsKey(roomName)) active ??= roomName;
       }
+      if (m.command == 'MODE' && m.params.length >= 2) {
+        final target = m.params.first;
+        if (target.startsWith('#') && rooms.containsKey(target)) {
+          final room = rooms[target]!;
+          var adding = true;
+          var arg = 2;
+          for (final mode in m.params[1].split('')) {
+            if (mode == '+') { adding = true; continue; }
+            if (mode == '-') { adding = false; continue; }
+            final needsNick = 'ovhqa'.contains(mode);
+            if (needsNick && arg < m.params.length) {
+              final user = m.params[arg++];
+              var prefixes = room.modes[user] ?? '';
+              const map = {'q': '~', 'a': '&', 'o': '@', 'h': '%', 'v': '+'};
+              final p = map[mode];
+              if (p != null) {
+                if (adding && !prefixes.contains(p)) prefixes += p;
+                if (!adding) prefixes = prefixes.replaceAll(p, '');
+                if (prefixes.isEmpty) room.modes.remove(user); else room.modes[user] = prefixes;
+              }
+            }
+          }
+        }
+      }
     });
   }
 
-  Future<void> connect() async {
-    if (connecting) return;
+  Future<void> connect({bool automatic = false}) async {
+    if (connecting || connected) return;
+    reconnectTimer?.cancel();
     final server = host.text.trim();
     final nickname = nick.text.trim();
     final selectedPort = int.tryParse(port.text.trim()) ?? (secure ? 6697 : 6667);
@@ -151,10 +245,11 @@ class _IrcHomePageState extends State<IrcHomePage> {
       setState(() => status = 'Servidor y nickname son obligatorios');
       return;
     }
+    manualDisconnect = false;
     setState(() {
       connecting = true;
       connected = false;
-      status = 'Conectando...';
+      status = automatic ? 'Reconectando...' : 'Conectando...';
     });
     try {
       await client.connect(host: server, port: selectedPort, nickname: nickname, secure: secure);
@@ -178,11 +273,22 @@ class _IrcHomePageState extends State<IrcHomePage> {
           connecting = false;
           status = text;
         });
+        if (!automatic && !manualDisconnect && !text.toLowerCase().contains('nickname en uso')) {
+          _scheduleReconnect();
+        }
       }
     }
   }
 
+  void _scheduleReconnect() {
+    if (manualDisconnect || connected || connecting) return;
+    reconnectTimer?.cancel();
+    reconnectTimer = Timer(const Duration(seconds: 5), () => connect(automatic: true));
+  }
+
   Future<void> disconnect() async {
+    manualDisconnect = true;
+    reconnectTimer?.cancel();
     await client.disconnect();
     if (mounted) {
       setState(() {
@@ -210,6 +316,230 @@ class _IrcHomePageState extends State<IrcHomePage> {
     });
   }
 
+  void closeRoom(String name) {
+    final room = rooms[name];
+    if (room == null) return;
+    if (!room.privateChat && connected) client.part(name);
+    rooms.remove(name);
+    if (active == name) {
+      active = rooms.isEmpty ? null : rooms.keys.first;
+    }
+    setState(() {});
+  }
+
+  void showUserActions(String user) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(leading: const Icon(Icons.alternate_email), title: Text('Mencionar @$user'), onTap: () {
+              Navigator.pop(context);
+              message.text = '${message.text}$user ';
+              message.selection = TextSelection.collapsed(offset: message.text.length);
+              FocusScope.of(this.context).requestFocus(FocusNode());
+            }),
+            ListTile(leading: const Icon(Icons.chat_bubble_outline), title: const Text('Privado'), onTap: () {
+              Navigator.pop(context);
+              openPrivate(user);
+            }),
+            ListTile(leading: const Icon(Icons.volume_off_outlined), title: const Text('Ignorar'), onTap: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: Text('$user marcado para ignorar (filtro local pendiente)')));
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color nickColor(String user) {
+    var hash = 0;
+    for (final c in user.codeUnits) hash = (hash * 31 + c) & 0x7fffffff;
+    final colors = [
+      const Color(0xFF7CB8FF), const Color(0xFFFFA6C9), const Color(0xFFB9E986),
+      const Color(0xFFFFCC80), const Color(0xFFC7A7FF), const Color(0xFF72E0D1),
+      const Color(0xFFFF9E80), const Color(0xFF9FA8DA),
+    ];
+    return colors[hash % colors.length];
+  }
+
+  @override
+  void dispose() {
+    reconnectTimer?.cancel();
+    subscription?.cancel();
+    message.removeListener(_onMessageChanged);
+    client.dispose();
+    host.dispose();
+    port.dispose();
+    nick.dispose();
+    channel.dispose();
+    message.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF151B22),
+          title: const Row(children: [Icon(Icons.forum_rounded, size: 22), SizedBox(width: 8), Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700))]),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Row(children: [
+                Icon(Icons.circle, size: 9, color: connected ? const Color(0xFF8FB59B) : Colors.grey),
+                const SizedBox(width: 6),
+                SizedBox(width: 170, child: Text(status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+              ]),
+            ),
+          ],
+        ),
+        drawer: buildDrawer(),
+        body: Column(
+          children: [
+            if (rooms.isNotEmpty) buildTabs(),
+            Expanded(child: Row(children: [Expanded(child: active == null ? buildWelcome() : buildChat()), if (active != null) buildUsers()])),
+            buildComposer(),
+          ],
+        ),
+      );
+
+  Widget buildTabs() {
+    final tabs = rooms.values.map((room) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: ChoiceChip(
+            label: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(room.privateChat ? Icons.person_outline : Icons.tag, size: 16),
+              const SizedBox(width: 5),
+              Text(room.name),
+              if (room.unread > 0) ...[const SizedBox(width: 5), Text('${room.unread}')],
+              const SizedBox(width: 2),
+              GestureDetector(onTap: () => closeRoom(room.name), child: const Icon(Icons.close, size: 15)),
+            ]),
+            selected: room.name == active,
+            onSelected: (_) => setState(() { active = room.name; room.unread = 0; }),
+          ),
+        )).toList();
+    return SizedBox(height: 56, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7), children: tabs));
+  }
+
+  Widget buildDrawer() {
+    return Drawer(
+      backgroundColor: const Color(0xFF151B22),
+      child: SafeArea(
+        child: ListView(padding: const EdgeInsets.all(16), children: [
+          const Center(child: Text('JersIRC', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800))),
+          const Center(child: Text('IRC, simple y claro', style: TextStyle(color: Colors.white54))),
+          const SizedBox(height: 22),
+          const Text('CONEXIÓN', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
+          const SizedBox(height: 10),
+          TextField(controller: host, decoration: const InputDecoration(labelText: 'Servidor')),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: TextField(controller: port, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto'))),
+            const SizedBox(width: 8),
+            Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname'))),
+          ]),
+          SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('TLS / SSL'), subtitle: Text(secure ? 'Conexión cifrada' : 'Conexión normal'), value: secure, onChanged: connecting ? null : (value) => setState(() => secure = value)),
+          const SizedBox(height: 4),
+          FilledButton.icon(onPressed: connecting ? null : (connected ? disconnect : connect), icon: Icon(connected ? Icons.link_off : Icons.link), label: Text(connected ? 'Desconectar' : 'Conectar')),
+          const Divider(height: 28, color: Colors.white12),
+          const Text('UNIRSE A CANAL', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
+          const SizedBox(height: 8),
+          Row(children: [Expanded(child: TextField(controller: channel, decoration: const InputDecoration(hintText: '#canal'))), const SizedBox(width: 8), IconButton.filled(onPressed: connected ? joinChannel : null, icon: const Icon(Icons.add))]),
+          const SizedBox(height: 28),
+          Center(child: Text('UTF-8', style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(.25), letterSpacing: 2))),
+        ]),
+      ),
+    );
+  }
+
+  Widget buildWelcome() => Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(Icons.forum_outlined, size: 62, color: Colors.white.withOpacity(.4)),
+        const SizedBox(height: 14),
+        const Text('Bienvenido a JersIRC', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        const Text('Configura servidor, puerto, TLS y nickname', style: TextStyle(color: Colors.white54)),
+      ]));
+
+  Widget buildChat() {
+    final items = current.messages;
+    if (items.isEmpty) return Center(child: Text(current.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)));
+    return Column(children: [
+      if (!connected) Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), color: Colors.orange.withOpacity(.12), child: Text(status, style: const TextStyle(fontSize: 12))),
+      Expanded(child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: items.length,
+        itemBuilder: (_, index) {
+          final item = items[index];
+          final user = item.nick ?? 'Sistema';
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: RichText(text: TextSpan(children: [
+              TextSpan(text: '$user  ', style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))),
+              TextSpan(text: item.trailing, style: const TextStyle(color: Colors.white)),
+            ])),
+          );
+        },
+      )),
+    ]);
+  }
+
+  Widget buildUsers() {
+    final users = current.users.toList()..sort();
+    final panel = GestureDetector(
+      onHorizontalDragUpdate: (details) {
+        if (details.delta.dx < -4) setState(() => usersVisible = false);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: usersVisible ? 150 : 0,
+        clipBehavior: Clip.hardEdge,
+        decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),
+        child: SizedBox(width: 150, child: ListView(padding: const EdgeInsets.all(8), children: [
+          Row(children: [const Expanded(child: Text('USUARIOS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54))), IconButton(onPressed: () => setState(() => usersVisible = false), icon: const Icon(Icons.chevron_right, size: 20))]),
+          const SizedBox(height: 4),
+          ...users.map((user) {
+            final prefix = current.modes[user] ?? '';
+            return ListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 2),
+              leading: Text(prefix.isEmpty ? '•' : prefix, style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))),
+              title: Text(user, overflow: TextOverflow.ellipsis, style: TextStyle(color: nickColor(user), fontWeight: FontWeight.w600)),
+              onTap: () => showUserActions(user),
+            );
+          }),
+        ])),
+      ),
+    );
+    if (usersVisible) return panel;
+    return GestureDetector(
+      onHorizontalDragUpdate: (details) { if (details.delta.dx > 4) setState(() => usersVisible = true); },
+      child: Container(width: 24, decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))), child: const Center(child: Icon(Icons.chevron_left, size: 18))),
+    );
+  }
+
+  Widget buildComposer() {
+    final suggestions = nickSuggestions;
+    return SafeArea(child: Padding(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (showSuggestions && suggestions.isNotEmpty)
+          Align(alignment: Alignment.centerLeft, child: Card(child: ConstrainedBox(constraints: const BoxConstraints(maxHeight: 180), child: ListView(shrinkWrap: true, children: suggestions.map((user) => ListTile(dense: true, leading: Text(current.modes[user] ?? '•'), title: Text(user, style: TextStyle(color: nickColor(user))), onTap: () => chooseNick(user))).toList())))),
+        Row(children: [
+          Expanded(child: TextField(
+            controller: message,
+            enabled: connected && active != null,
+            onSubmitted: (_) => sendMessage(),
+            decoration: InputDecoration(hintText: connected ? 'Escribe un mensaje o /comando' : 'Reconectando...'),
+          )),
+          const SizedBox(width: 8),
+          IconButton.filled(onPressed: connected && active != null ? sendMessage : null, icon: const Icon(Icons.send_rounded)),
+        ]),
+      ]),
+    ));
+  }
+
   void sendMessage() {
     final text = message.text.trim();
     final target = active;
@@ -232,7 +562,7 @@ class _IrcHomePageState extends State<IrcHomePage> {
       channel.text = parts[1];
       joinChannel();
     } else if (name == 'part' && active != null) {
-      client.part(active!);
+      closeRoom(active!);
     } else if (name == 'nick' && parts.length > 1) {
       nick.text = parts[1];
       client.changeNick(parts[1]);
@@ -244,243 +574,5 @@ class _IrcHomePageState extends State<IrcHomePage> {
     } else {
       client.send(command);
     }
-  }
-
-  @override
-  void dispose() {
-    subscription?.cancel();
-    client.dispose();
-    host.dispose();
-    port.dispose();
-    nick.dispose();
-    channel.dispose();
-    message.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF151B22),
-          title: const Row(
-            children: [
-              Icon(Icons.forum_rounded, size: 22),
-              SizedBox(width: 8),
-              Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
-            ],
-          ),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 14),
-              child: Row(
-                children: [
-                  Icon(Icons.circle, size: 9, color: connected ? const Color(0xFF8FB59B) : Colors.grey),
-                  const SizedBox(width: 6),
-                  SizedBox(
-                    width: 190,
-                    child: Text(status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        drawer: buildDrawer(),
-        body: Column(
-          children: [
-            if (rooms.isNotEmpty) buildTabs(),
-            Expanded(
-              child: Row(
-                children: [
-                  Expanded(child: active == null ? buildWelcome() : buildChat()),
-                  if (active != null) buildUsers(),
-                ],
-              ),
-            ),
-            buildComposer(),
-          ],
-        ),
-      );
-
-  Widget buildTabs() {
-    final tabs = rooms.values.map((room) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: ChoiceChip(
-          label: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(room.privateChat ? Icons.person_outline : Icons.tag, size: 16),
-              const SizedBox(width: 5),
-              Text(room.name),
-              if (room.unread > 0) ...[
-                const SizedBox(width: 5),
-                Text('${room.unread}'),
-              ],
-            ],
-          ),
-          selected: room.name == active,
-          onSelected: (_) => setState(() {
-            active = room.name;
-            room.unread = 0;
-          }),
-        ),
-      );
-    }).toList();
-
-    return SizedBox(
-      height: 56,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-        children: tabs,
-      ),
-    );
-  }
-
-  Widget buildDrawer() {
-    return Drawer(
-      backgroundColor: const Color(0xFF151B22),
-      child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            const Center(child: Text('JersIRC', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800))),
-            const Center(child: Text('IRC, simple y claro', style: TextStyle(color: Colors.white54))),
-            const SizedBox(height: 22),
-            const Text('CONEXIÓN', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
-            const SizedBox(height: 10),
-            TextField(controller: host, decoration: const InputDecoration(labelText: 'Servidor')),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: TextField(controller: port, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto'))),
-                const SizedBox(width: 8),
-                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname'))),
-              ],
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('TLS / SSL'),
-              subtitle: Text(secure ? 'Conexión cifrada' : 'Conexión normal'),
-              value: secure,
-              onChanged: connecting ? null : (value) => setState(() => secure = value),
-            ),
-            const SizedBox(height: 4),
-            FilledButton.icon(
-              onPressed: connecting ? null : (connected ? disconnect : connect),
-              icon: Icon(connected ? Icons.link_off : Icons.link),
-              label: Text(connected ? 'Desconectar' : 'Conectar'),
-            ),
-            const Divider(height: 28, color: Colors.white12),
-            const Text('UNIRSE A CANAL', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: TextField(controller: channel, decoration: const InputDecoration(hintText: '#canal'))),
-                const SizedBox(width: 8),
-                IconButton.filled(onPressed: connected ? joinChannel : null, icon: const Icon(Icons.add)),
-              ],
-            ),
-            const SizedBox(height: 28),
-            Center(child: Text('UTF-8', style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(.25), letterSpacing: 2))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget buildWelcome() => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.forum_outlined, size: 62, color: Colors.white.withOpacity(.4)),
-            const SizedBox(height: 14),
-            const Text('Bienvenido a JersIRC', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            const Text('Configura servidor, puerto, TLS y nickname', style: TextStyle(color: Colors.white54)),
-          ],
-        ),
-      );
-
-  Widget buildChat() {
-    final items = current.messages;
-    if (items.isEmpty) {
-      return Center(child: Text(current.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)));
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: items.length,
-      itemBuilder: (_, index) {
-        final item = items[index];
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: RichText(
-            text: TextSpan(
-              children: [
-                TextSpan(text: '${item.nick ?? 'Sistema'}  ', style: const TextStyle(fontWeight: FontWeight.bold)),
-                TextSpan(text: item.trailing, style: const TextStyle(color: Colors.white)),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget buildUsers() {
-    final users = current.users.toList()..sort();
-    return Container(
-      width: 135,
-      decoration: const BoxDecoration(
-        color: Color(0xFF151B22),
-        border: Border(left: BorderSide(color: Colors.white10)),
-      ),
-      child: ListView(
-        padding: const EdgeInsets.all(10),
-        children: [
-          const Text('USUARIOS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54)),
-          const SizedBox(height: 8),
-          ...users.map(
-            (user) => ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.person_outline, size: 16),
-              title: Text(user, overflow: TextOverflow.ellipsis),
-              onTap: () => openPrivate(user),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget buildComposer() {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: message,
-                enabled: connected && active != null,
-                onSubmitted: (_) => sendMessage(),
-                decoration: InputDecoration(
-                  hintText: connected ? 'Escribe un mensaje o /comando' : 'Conecta un servidor para chatear',
-                  prefixIcon: const Icon(Icons.chat_bubble_outline, size: 19),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton.filled(
-              onPressed: connected && active != null ? sendMessage : null,
-              icon: const Icon(Icons.send_rounded),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
