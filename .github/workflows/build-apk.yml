@@ -15,21 +15,57 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Apply JersIRC final fixes
+      - name: Apply final JersIRC UI fixes
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('lib/main.dart')
           s = p.read_text(encoding='utf-8')
 
-          # Remove accidental duplicate ignore checks from previous patches.
-          dup = "        if (m.nick != null && ignoredUsers.contains(m.nick!.toLowerCase())) return;\n"
-          while s.count(dup) > 1:
-              first = s.find(dup)
-              second = s.find(dup, first + len(dup))
-              s = s[:second] + s[second + len(dup):]
+          # Clean IRC formatting/control characters and leaked color numbers.
+          start = s.find('  String cleanIrcText(String text) {')
+          if start >= 0:
+              end = s.find('\n  }', start)
+              if end >= 0:
+                  end += 4
+                  s = s[:start] + '''  String cleanIrcText(String text) {
+    var cleaned = text.replaceAll(RegExp('\\u0003(?:\\d{1,2}(?:,\\d{1,2})?)?'), '');
+    cleaned = cleaned.replaceAll(RegExp('[\\u0002\\u000F\\u0016\\u001D\\u001F]'), '');
+    cleaned = cleaned.replaceFirst(RegExp(r'^\\s*\\d{1,2}(?=\\s)'), '');
+    return cleaned.trimLeft();
+  }''' + s[end:]
 
-          # Do not treat ERR_NICKNAMEINUSE as a disconnected socket; ask for a new nick.
+          # Remove placeholder dots and make rank + nickname appear together.
+          old = """          ...users.map((user) {
+            final prefix = current.modes[user] ?? '';
+            return ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 2), leading: Text(prefix.isEmpty ? '•' : prefix, style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))), title: Text(user, overflow: TextOverflow.ellipsis, style: TextStyle(color: nickColor(user), fontWeight: FontWeight.w600)), onTap: () => showUserActions(user));
+          }),
+"""
+          new = """          ...users.map((user) {
+            final prefix = current.modes[user] ?? '';
+            return InkWell(
+              onTap: () => showUserActions(user),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+                child: Row(children: [
+                  if (prefix.isNotEmpty) Text(prefix, style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))),
+                  if (prefix.isNotEmpty) const SizedBox(width: 1),
+                  Expanded(child: Text(user, overflow: TextOverflow.ellipsis, style: TextStyle(color: nickColor(user), fontWeight: FontWeight.w600))),
+                ]),
+              ),
+            );
+          }),
+"""
+          s = s.replace(old, new)
+
+          # Bigger status on the right with semantic colors.
+          old = """              SizedBox(width: 170, child: Text(status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+"""
+          new = """              SizedBox(width: 205, child: Text(status, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: status.startsWith('Reconectando') ? Colors.amber : (status == 'Desconectado' ? Colors.redAccent : (connected ? const Color(0xFF8FB59B) : Colors.white70))))),
+"""
+          s = s.replace(old, new)
+
+          # ERR_NICKNAMEINUSE: keep socket alive and show change-nick dialog.
           old = """      if (numeric != null && numeric >= 400 && numeric != 422) {
         status = friendlyError(m);
         if ({431, 432, 433, 436, 437, 451, 464, 465}.contains(numeric)) {
@@ -46,121 +82,37 @@ jobs:
           connecting = false;
           reconnectTimer?.cancel();
         }
-        if (numeric == 433) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _showNickTakenDialog());
-        }
+        if (numeric == 433) WidgetsBinding.instance.addPostFrameCallback((_) => _showNickTakenDialog());
       }
 """
           s = s.replace(old, new)
 
-          # Add nickname-change dialog.
-          marker = "  Future<void> connect({bool automatic = false}) async {\n"
-          dialog = """  void _showNickTakenDialog() {
+          marker = '  Future<void> connect({bool automatic = false}) async {'
+          if 'void _showNickTakenDialog()' not in s:
+              dialog = '''  void _showNickTakenDialog() {
     if (!mounted) return;
     final controller = TextEditingController(text: nick.text);
     showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Nickname en uso'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Cambiar nickname'),
-          onSubmitted: (_) {
+        content: TextField(controller: controller, autofocus: true, decoration: const InputDecoration(labelText: 'Cambiar nickname')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          FilledButton(onPressed: () {
             final value = controller.text.trim();
             if (value.isEmpty) return;
             nick.text = value;
             client.changeNick(value);
-            Navigator.pop(dialogContext);
-          },
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isEmpty) return;
-              nick.text = value;
-              client.changeNick(value);
-              Navigator.pop(dialogContext);
-            },
-            child: const Text('Cambiar'),
-          ),
+            Navigator.pop(ctx);
+          }, child: const Text('Cambiar')),
         ],
       ),
     ).whenComplete(controller.dispose);
   }
 
-"""
-          if "void _showNickTakenDialog()" not in s:
+'''
               s = s.replace(marker, dialog + marker)
-
-          # Strip IRC formatting and any leaked color number at the beginning.
-          start = s.find("  String cleanIrcText(String text) {")
-          if start >= 0:
-              end = s.find("\n  }", start)
-              if end >= 0:
-                  end += len("\n  }")
-                  replacement = """  String cleanIrcText(String text) {
-    var cleaned = text.replaceAll(RegExp('\\u0003(?:\\d{1,2}(?:,\\d{1,2})?)?'), '');
-    cleaned = cleaned.replaceAll(RegExp('[\\u0002\\u000F\\u0016\\u001D\\u001F]'), '');
-    // Algunos servidores/decoficadores dejan solamente 01, 02, 03... después del color IRC.
-    cleaned = cleaned.replaceFirst(RegExp(r'^\\s*\\d{1,2}(?=\\s)'), '');
-    return cleaned.trimLeft();
-  }"""
-                  s = s[:start] + replacement + s[end:]
-
-          # Compact user list: prefix and nick must be visually adjacent; no placeholder dot.
-          old = """          ...users.map((user) {
-            final prefix = current.modes[user] ?? '';
-            return ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 2), leading: Text(prefix.isEmpty ? '•' : prefix, style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))), title: Text(user, overflow: TextOverflow.ellipsis, style: TextStyle(color: nickColor(user), fontWeight: FontWeight.w600)), onTap: () => showUserActions(user));
-          }),
-"""
-          new = """          ...users.map((user) {
-            final prefix = current.modes[user] ?? '';
-            final privateRoom = rooms[user]?.privateChat ?? false;
-            final unread = privateRoom && (rooms[user]?.unread ?? 0) > 0;
-            return InkWell(
-              onTap: () => showUserActions(user),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-                child: Row(children: [
-                  if (prefix.isNotEmpty) Text(prefix, style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))),
-                  if (prefix.isNotEmpty) const SizedBox(width: 1),
-                  if (unread) ...[
-                    AnimatedOpacity(opacity: blink ? 1 : .25, duration: const Duration(milliseconds: 120), child: Icon(Icons.circle, size: 6, color: nickColor(user))),
-                    const SizedBox(width: 3),
-                  ],
-                  Expanded(child: Text(user, overflow: TextOverflow.ellipsis, style: TextStyle(color: nickColor(user), fontWeight: FontWeight.w600))),
-                ]),
-              ),
-            );
-          }),
-"""
-          s = s.replace(old, new)
-
-          # Slightly larger/right-aligned connection status with semantic colors.
-          old = """              SizedBox(width: 170, child: Text(status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
-"""
-          new = """              SizedBox(
-                width: 205,
-                child: Text(
-                  status,
-                  textAlign: TextAlign.right,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: status.startsWith('Reconectando') ? Colors.amber : (status == 'Desconectado' ? Colors.redAccent : (connected ? const Color(0xFF8FB59B) : Colors.white70)),
-                  ),
-                ),
-              ),
-"""
-          s = s.replace(old, new)
-
-          # Ensure PV never renders the user list.
-          if "if (current.privateChat) return const SizedBox.shrink();" not in s:
-              s = s.replace("  Widget buildUsers() {\n", "  Widget buildUsers() {\n    if (current.privateChat) return const SizedBox.shrink();\n")
 
           p.write_text(s, encoding='utf-8')
           PY
@@ -174,76 +126,8 @@ jobs:
       - name: Generate Android platform
         run: flutter create --platforms=android --project-name jersirc .
 
-      - name: Enable Android internet and background service permissions
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('android/app/src/main/AndroidManifest.xml')
-          s = p.read_text(encoding='utf-8')
-          s = s.replace('<uses-permission android:name="android.permission.INTERNET" />', '')
-          s = s.replace('<manifest ', '<manifest ', 1)
-          anchor = '<application '
-          perms = '''    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n'''
-          s = s.replace(anchor, perms + anchor, 1)
-          p.write_text(s, encoding='utf-8')
-          PY
-
-      - name: Configure Android background keep-alive
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          root = Path('android/app/src/main')
-          main = root / 'kotlin/com/example/jersirc/MainActivity.kt'
-          main.parent.mkdir(parents=True, exist_ok=True)
-          main.write_text('''package com.example.jersirc
-
-import android.content.Intent
-import android.os.Build
-import io.flutter.embedding.android.FlutterActivity
-
-class MainActivity: FlutterActivity() {
-    override fun onStop() {
-        super.onStop()
-        val intent = Intent(this, JersIrcKeepAliveService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
-    }
-}
-''', encoding='utf-8')
-          service = root / 'kotlin/com/example/jersirc/JersIrcKeepAliveService.kt'
-          service.write_text('''package com.example.jersirc
-
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.Service
-import android.content.Intent
-import android.os.Build
-import android.os.IBinder
-
-class JersIrcKeepAliveService : Service() {
-    private val channelId = "jersirc_connection"
-    override fun onCreate() {
-        super.onCreate()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Conexión JersIRC", NotificationManager.IMPORTANCE_LOW)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-        }
-        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, channelId).setContentTitle("JersIRC conectado").setContentText("Manteniendo la conexión IRC en segundo plano").setSmallIcon(android.R.drawable.stat_notify_sync).setOngoing(true).build()
-        } else {
-            Notification.Builder(this).setContentTitle("JersIRC conectado").setContentText("Manteniendo la conexión IRC en segundo plano").setSmallIcon(android.R.drawable.stat_notify_sync).setOngoing(true).build()
-        }
-        startForeground(1701, notification)
-    }
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
-    override fun onBind(intent: Intent?): IBinder? = null
-}
-''', encoding='utf-8')
-          manifest = Path('android/app/src/main/AndroidManifest.xml')
-          s = manifest.read_text(encoding='utf-8')
-          s = s.replace('</application>', '        <service android:name=".JersIrcKeepAliveService" android:exported="false" android:foregroundServiceType="dataSync" />\n    </application>')
-          manifest.write_text(s, encoding='utf-8')
-          PY
+      - name: Enable Android internet
+        run: sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
 
       - name: Get dependencies
         run: flutter pub get
