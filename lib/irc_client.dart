@@ -73,13 +73,17 @@ class IrcClient {
       _socket = socket;
       _connected = true;
 
-      _subscription = utf8.decoder
+      // Algunos servidores IRC todavía envían bytes que no son UTF-8 válido
+      // durante el banner/NAMES. No debemos cerrar la conexión por eso.
+      _subscription = const Utf8Decoder(allowMalformed: true)
           .bind(socket)
           .transform(const LineSplitter())
           .listen(_handleLine, onDone: () {
             _connected = false;
             if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
-              _readyCompleter!.completeError(StateError('El servidor cerró la conexión antes de completar el registro IRC.'));
+              _readyCompleter!.completeError(
+                StateError('El servidor cerró la conexión antes de completar el registro IRC.'),
+              );
             }
             _messages.add(const IrcMessage('', null, 'DISCONNECTED', []));
           }, onError: (Object e) {
@@ -90,7 +94,6 @@ class IrcClient {
             _messages.add(IrcMessage(e.toString(), null, 'ERROR', [e.toString()]));
           });
 
-      // IRC básico: enviamos NICK y USER en UTF-8 sin iniciar CAP negotiation.
       send('NICK $nickname');
       send('USER ${username ?? nickname} 0 * :JersIRC Android Client');
 
@@ -107,12 +110,10 @@ class IrcClient {
   void _handleLine(String line) {
     final m = IrcMessage.parse(line);
 
-    // El servidor puede enviar PING en cualquier momento.
     if (m.command == 'PING') {
       send('PONG :${m.trailing}');
     }
 
-    // Errores de registro: no dejamos la conexión colgada esperando 001.
     if (_isRegistrationError(m.command) &&
         _readyCompleter != null &&
         !_readyCompleter!.isCompleted) {
@@ -121,7 +122,6 @@ class IrcClient {
       );
     }
 
-    // 001 = registro IRC completado.
     if (m.command == '001' && _readyCompleter != null && !_readyCompleter!.isCompleted) {
       _readyCompleter!.complete();
     }
@@ -131,21 +131,20 @@ class IrcClient {
 
   bool _isRegistrationError(String command) {
     return const {
-      '431', // NO NICKNAME GIVEN
-      '432', // ERR_ERRONEUSNICKNAME
-      '433', // ERR_NICKNAMEINUSE
-      '436', // ERR_NICKCOLLISION
-      '437', // ERR_UNAVAILRESOURCE
-      '451', // NOT REGISTERED
-      '462', // ALREADY REGISTERED
-      '464', // PASSWORD MISMATCH
-      '465', // YOU ARE BANNED
+      '431',
+      '432',
+      '433',
+      '436',
+      '437',
+      '451',
+      '462',
+      '464',
+      '465',
     }.contains(command);
   }
 
   void send(String command) {
     if (_connected && _socket != null) {
-      // Socket.write(String) envía el texto codificado en UTF-8.
       _socket!.write('$command\r\n');
     }
   }
