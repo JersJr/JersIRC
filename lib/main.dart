@@ -57,6 +57,7 @@ class _IrcHomePageState extends State<IrcHomePage> {
   bool showSuggestions = false;
   bool blink = false;
   bool userHasScrolled = false;
+  final Set<String> ignoredUsers = {};
   String status = 'Desconectado';
 
   ChatRoom get current => rooms[active] ?? ChatRoom(active ?? 'JersIRC');
@@ -213,6 +214,7 @@ class _IrcHomePageState extends State<IrcHomePage> {
       }
       if ((m.command == 'PRIVMSG' || m.command == 'NOTICE') && m.params.isNotEmpty) {
         final target = m.params.first;
+        if (m.nick != null && ignoredUsers.contains(m.nick!.toLowerCase())) return;
         final isChannel = target.startsWith('#') || target.startsWith('&') || target.startsWith('+') || target.startsWith('!');
         final name = isChannel ? target : (m.nick ?? target);
         final room = rooms.putIfAbsent(name, () => ChatRoom(name, privateChat: !isChannel));
@@ -359,6 +361,7 @@ class _IrcHomePageState extends State<IrcHomePage> {
   }
 
   void showUserActions(String user) {
+    final ignored = ignoredUsers.contains(user.toLowerCase());
     showModalBottomSheet<void>(
       context: context,
       builder: (context) => SafeArea(child: Wrap(children: [
@@ -371,8 +374,46 @@ class _IrcHomePageState extends State<IrcHomePage> {
           Navigator.pop(context);
           openPrivate(user);
         }),
+        ListTile(
+          leading: Icon(ignored ? Icons.visibility : Icons.block_outlined),
+          title: Text(ignored ? 'Dejar de ignorar' : 'Ignorar'),
+          onTap: () {
+            Navigator.pop(context);
+            setState(() {
+              final key = user.toLowerCase();
+              if (ignored) {
+                ignoredUsers.remove(key);
+              } else {
+                ignoredUsers.add(key);
+              }
+            });
+          },
+        ),
       ])),
     );
+  }
+
+  String cleanIrcText(String text) {
+    var cleaned = text.replaceAll(RegExp(r'\u0003(?:\d{1,2}(?:,\d{1,2})?)?'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'[\u0002\u000F\u0016\u001D\u001F]'), '');
+    return cleaned;
+  }
+
+  int rankWeight(String user) {
+    final prefix = current.modes[user] ?? '';
+    if (prefix.contains('~')) return 0;
+    if (prefix.contains('&')) return 1;
+    if (prefix.contains('@')) return 2;
+    if (prefix.contains('%')) return 3;
+    if (prefix.contains('+')) return 4;
+    return 5;
+  }
+
+  Color privateTabColor(String user, {bool selected = false, bool unread = false}) {
+    final base = nickColor(user);
+    if (selected) return Color.lerp(base, const Color(0xFF11161C), 0.45)!;
+    if (unread) return Color.lerp(base, const Color(0xFF11161C), 0.25)!;
+    return Color.lerp(base, const Color(0xFF252D36), 0.55)!;
   }
 
   Color nickColor(String user) {
@@ -442,7 +483,7 @@ class _IrcHomePageState extends State<IrcHomePage> {
                 child: Padding(
                   padding: const EdgeInsets.only(left: 12, right: 5),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(room.privateChat ? Icons.person_outline : Icons.tag, size: 16),
+                    Icon(room.privateChat ? Icons.person_outline : Icons.forum_outlined, size: 16),
                     const SizedBox(width: 5),
                     AnimatedOpacity(opacity: room.privateChat && hasUnread ? (blink ? 1 : .35) : 1, duration: const Duration(milliseconds: 120), child: Text(room.name)),
                     if (hasUnread) ...[
@@ -518,8 +559,8 @@ class _IrcHomePageState extends State<IrcHomePage> {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   child: RichText(text: TextSpan(children: [
-                    TextSpan(text: '$user  ', style: TextStyle(fontWeight: FontWeight.bold, color: nickColor(user))),
-                    TextSpan(text: item.trailing, style: const TextStyle(color: Colors.white)),
+                    TextSpan(text: '$user: ', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    TextSpan(text: cleanIrcText(item.trailing), style: const TextStyle(color: Colors.white)),
                   ])),
                 );
               },
@@ -528,7 +569,7 @@ class _IrcHomePageState extends State<IrcHomePage> {
   }
 
   Widget buildUsers() {
-    final users = current.users.toList()..sort();
+    final users = current.users.toList()..sort((a, b) { final rank = rankWeight(a).compareTo(rankWeight(b)); return rank != 0 ? rank : a.toLowerCase().compareTo(b.toLowerCase()); });
     if (!usersVisible) {
       return GestureDetector(
         onHorizontalDragUpdate: (details) { if (details.delta.dx > 3) setState(() => usersVisible = true); },
