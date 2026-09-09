@@ -594,7 +594,7 @@ class _IrcHomePageState extends State<IrcHomePage> {
         width: 148,
         decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),
         child: ListView(padding: const EdgeInsets.all(6), children: [
-          Row(children: [const Expanded(child: Text('USUARIOS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54))), IconButton(tooltip: 'Ocultar usuarios', onPressed: () => setState(() => usersVisible = false), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28), icon: const Icon(Icons.keyboard_double_arrow_right, size: 17))]),
+          Row(children: [const Expanded(child: Text('USUARIOS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54))), IconButton(tooltip: 'Ocultar usuarios', onPressed: () => setState(() => usersVisible = false), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28), icon: const Icon(Icons.keyboard_double_arrow_right, size: 17))]),
           const SizedBox(height: 4),
           ...users.map((user) {
             final prefix = current.modes[user] ?? '';
