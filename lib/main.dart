@@ -217,6 +217,7 @@ class _IrcHomePageState extends State<IrcHomePage> {
         if (m.nick != null && ignoredUsers.contains(m.nick!.toLowerCase())) return;
         if (m.nick != null && ignoredUsers.contains(m.nick!.toLowerCase())) return;
         if (m.nick != null && ignoredUsers.contains(m.nick!.toLowerCase())) return;
+        if (m.nick != null && ignoredUsers.contains(m.nick!.toLowerCase())) return;
         final isChannel = target.startsWith('#') || target.startsWith('&') || target.startsWith('+') || target.startsWith('!');
         final name = isChannel ? target : (m.nick ?? target);
         final room = rooms.putIfAbsent(name, () => ChatRoom(name, privateChat: !isChannel));
