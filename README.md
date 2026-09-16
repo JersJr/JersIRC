@@ -28,9 +28,13 @@ JersIRC busca ofrecer una experiencia IRC moderna con soporte para múltiples se
 
 🟢 Modelos separados para servidores, usuarios, salas y mensajes
 
+🟢 Controlador IRC separado para estado de conexión, salas y eventos
+
 🟢 Persistencia local de perfiles de servidor con `SharedPreferences`
 
 🟢 Parser IRC separado y probado sin red
+
+🟢 Pruebas unitarias del parser y del controlador
 
 🟢 Generación automática de APK mediante GitHub Actions
 
@@ -38,10 +42,12 @@ JersIRC busca ofrecer una experiencia IRC moderna con soporte para múltiples se
 
 ```text
 lib/
-├── main.dart                    # UI actual
+├── main.dart                    # punto de entrada + UI existente
 ├── irc_client.dart              # transporte TCP/TLS + eventos IRC
 ├── models.dart                  # export público de modelos
 ├── storage.dart                 # persistencia local
+├── controllers/
+│   └── irc_controller.dart      # estado y lógica IRC independiente de la UI
 ├── models/
 │   ├── chat_room.dart
 │   ├── irc_message.dart
@@ -51,12 +57,13 @@ lib/
     └── irc_parser.dart          # parser independiente y testeable
 ```
 
-La refactorización mantiene la compatibilidad con la UI existente: `IrcMessage` sigue disponible desde `irc_client.dart`, mientras que su implementación vive ahora en la capa de modelos.
+La refactorización se está realizando por etapas para no romper la interfaz existente. `IrcController` ya concentra la lógica de conexión, reconexión, salas, usuarios, mensajes privados, ignorados y modos de usuario; la pantalla actual puede migrarse a este controlador en la siguiente etapa sin cambiar el transporte IRC.
 
 ## Próxima etapa
 
+- Conectar `IrcHomePage` directamente a `IrcController`.
+- Separar la pantalla principal en `screens/` y componentes reutilizables en `widgets/`.
 - Conectar la UI directamente al modelo `IrcServer` y `JersStorage`.
-- Separar el controlador de estado de la pantalla principal.
 - Soporte para múltiples perfiles/servidores desde la interfaz.
 - SASL y capacidades IRCv3.
 - Historial persistente de mensajes.
