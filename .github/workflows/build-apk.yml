@@ -24,17 +24,11 @@ jobs:
       - name: Generate Android platform
         run: flutter create --platforms=android --project-name jersirc .
 
+      - name: Verify Dart source was not modified
+        run: git diff --exit-code -- lib/main.dart lib/irc_client.dart
+
       - name: Enable Android internet permission
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('android/app/src/main/AndroidManifest.xml')
-          s = p.read_text(encoding='utf-8')
-          permission = '    <uses-permission android:name="android.permission.INTERNET" />'
-          if 'android.permission.INTERNET' not in s:
-              s = s.replace('<manifest ', '<manifest ' + '\n' + permission + '\n', 1)
-              p.write_text(s, encoding='utf-8')
-          PY
+        run: sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
 
       - name: Get dependencies
         run: flutter pub get
