@@ -2,53 +2,18 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-class IrcMessage {
-  final String raw;
-  final String? prefix;
-  final String command;
-  final List<String> params;
-  const IrcMessage(this.raw, this.prefix, this.command, this.params);
+import 'models/irc_message.dart';
+import 'services/irc_parser.dart';
 
-  String get trailing => params.isEmpty ? '' : params.last;
-  String? get nick => prefix?.split('!').first;
-
-  static IrcMessage parse(String raw) {
-    var line = raw;
-    String? prefix;
-    if (line.startsWith(':')) {
-      final space = line.indexOf(' ');
-      if (space > 0) {
-        prefix = line.substring(1, space);
-        line = line.substring(space + 1);
-      }
-    }
-
-    final parts = <String>[];
-    while (line.isNotEmpty) {
-      line = line.trimLeft();
-      if (line.isEmpty) break;
-      if (line.startsWith(':')) {
-        parts.add(line.substring(1));
-        break;
-      }
-      final space = line.indexOf(' ');
-      if (space < 0) {
-        parts.add(line);
-        break;
-      }
-      parts.add(line.substring(0, space));
-      line = line.substring(space + 1);
-    }
-
-    final command = parts.isEmpty ? '' : parts.removeAt(0).toUpperCase();
-    return IrcMessage(raw, prefix, command, parts);
-  }
-}
+// Kept as a public re-export so existing UI code can continue importing
+// IrcMessage from irc_client.dart while the model lives in its own layer.
+export 'models/irc_message.dart';
 
 class IrcClient {
   Socket? _socket;
   StreamSubscription<String>? _subscription;
   final _messages = StreamController<IrcMessage>.broadcast();
+  final _parser = const IrcParser();
   Completer<void>? _readyCompleter;
   bool _connected = false;
 
@@ -73,8 +38,8 @@ class IrcClient {
       _socket = socket;
       _connected = true;
 
-      // Algunos servidores IRC todavía envían bytes que no son UTF-8 válido
-      // durante el banner/NAMES. No debemos cerrar la conexión por eso.
+      // Some IRC servers can emit malformed UTF-8 during banners/NAMES.
+      // Do not tear down an otherwise valid IRC connection because of it.
       _subscription = const Utf8Decoder(allowMalformed: true)
           .bind(socket)
           .transform(const LineSplitter())
@@ -94,8 +59,8 @@ class IrcClient {
             _messages.add(IrcMessage(e.toString(), null, 'ERROR', [e.toString()]));
           });
 
-      send('NICK $nickname');
-      send('USER ${username ?? nickname} 0 * :JersIRC Android Client');
+      sendRaw('NICK $nickname');
+      sendRaw('USER ${username ?? nickname} 0 * :JersIRC Android Client');
 
       await _readyCompleter!.future.timeout(
         const Duration(seconds: 20),
@@ -108,25 +73,29 @@ class IrcClient {
   }
 
   void _handleLine(String line) {
-    final m = IrcMessage.parse(line);
+    final message = _parser.parse(line);
 
-    if (m.command == 'PING') {
-      send('PONG :${m.trailing}');
+    // IRC servers use PING as the application-level keepalive. It must be
+    // answered even before registration has completed.
+    if (message.command == 'PING') {
+      sendRaw('PONG :${message.trailing}');
     }
 
-    if (_isRegistrationError(m.command) &&
+    if (_isRegistrationError(message.command) &&
         _readyCompleter != null &&
         !_readyCompleter!.isCompleted) {
       _readyCompleter!.completeError(
-        StateError('IRC ${m.command}: ${m.trailing}'),
+        StateError('IRC ${message.command}: ${message.trailing}'),
       );
     }
 
-    if (m.command == '001' && _readyCompleter != null && !_readyCompleter!.isCompleted) {
+    if (message.command == '001' &&
+        _readyCompleter != null &&
+        !_readyCompleter!.isCompleted) {
       _readyCompleter!.complete();
     }
 
-    _messages.add(m);
+    _messages.add(message);
   }
 
   bool _isRegistrationError(String command) {
@@ -143,18 +112,29 @@ class IrcClient {
     }.contains(command);
   }
 
-  void send(String command) {
+  /// Sends one complete IRC command. CRLF is appended automatically.
+  void sendRaw(String command) {
     if (_connected && _socket != null) {
       _socket!.write('$command\r\n');
     }
   }
 
-  void join(String channel) => send('JOIN $channel');
-  void part(String channel, [String? reason]) => send('PART $channel${reason == null ? '' : ' :$reason'}');
-  void changeNick(String nickname) => send('NICK $nickname');
-  void message(String target, String text) => send('PRIVMSG $target :$text');
-  void notice(String target, String text) => send('NOTICE $target :$text');
-  void quit([String reason = 'Leaving JersIRC']) => send('QUIT :$reason');
+  // Backwards-compatible alias used by the existing UI.
+  void send(String command) => sendRaw(command);
+
+  void join(String channel) => sendRaw('JOIN $channel');
+
+  void part(String channel, [String? reason]) => sendRaw(
+        'PART $channel${reason == null ? '' : ' :$reason'}',
+      );
+
+  void changeNick(String nickname) => sendRaw('NICK $nickname');
+
+  void message(String target, String text) => sendRaw('PRIVMSG $target :$text');
+
+  void notice(String target, String text) => sendRaw('NOTICE $target :$text');
+
+  void quit([String reason = 'Leaving JersIRC']) => sendRaw('QUIT :$reason');
 
   Future<void> disconnect() async {
     final socket = _socket;
@@ -162,12 +142,15 @@ class IrcClient {
     _readyCompleter = null;
     await _subscription?.cancel();
     _subscription = null;
+
     try {
       socket?.write('QUIT :Leaving JersIRC\r\n');
     } catch (_) {}
+
     try {
       await socket?.close();
     } catch (_) {}
+
     _socket = null;
   }
 
