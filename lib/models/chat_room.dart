@@ -18,6 +18,15 @@ class ChatRoomModel {
         : existing.copyWith(prefixes: prefixes);
   }
 
+  void setUserPrefixes(String nick, String prefixes) {
+    final existing = users[nick];
+    if (existing == null) {
+      users[nick] = IrcUser(nick, prefixes: prefixes);
+      return;
+    }
+    users[nick] = existing.copyWith(prefixes: prefixes);
+  }
+
   void removeUser(String nick) => users.remove(nick);
 
   void renameUser(String oldNick, String newNick) {
