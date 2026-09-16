@@ -1,4 +1,4 @@
-import '../irc_client.dart';
+import '../models/irc_message.dart';
 
 /// Parser for one IRC protocol line.
 ///
