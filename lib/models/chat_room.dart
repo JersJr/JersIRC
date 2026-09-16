@@ -1,4 +1,4 @@
-import '../irc_client.dart';
+import 'irc_message.dart';
 import 'irc_user.dart';
 
 class ChatRoomModel {
