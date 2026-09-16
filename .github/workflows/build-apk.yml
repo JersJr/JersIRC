@@ -15,27 +15,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Remove IRC color codes safely
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('lib/main.dart')
-          s = p.read_text(encoding='utf-8')
-          start = s.find('  String cleanIrcText(String text) {')
-          if start >= 0:
-              end = s.find('\n  }', start)
-              if end >= 0:
-                  end += 4
-                  replacement = r'''  String cleanIrcText(String text) {
-    var cleaned = text.replaceAll(RegExp(r'\x03(?:[0-9]{1,2}(?:,[0-9]{1,2})?)?'), '');
-    cleaned = cleaned.replaceAll(RegExp(r'[\x02\x0F\x16\x1D\x1F]'), '');
-    cleaned = cleaned.replaceFirst(RegExp(r'^\s*(?:0?[1-9]|1[0-5])(?=\s)'), '');
-    return cleaned.trimLeft();
-  }'''
-                  s = s[:start] + replacement + s[end:]
-          p.write_text(s, encoding='utf-8')
-          PY
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
