@@ -21,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final message = TextEditingController();
   final messageFocus = FocusNode();
   final scroll = ScrollController();
-  bool secure = false, usersVisible = true;
+  bool secure = false, usersVisible = true, privateVisible = true, nicknameDialogOpen = false;
   List<SavedServer> savedServers = [];
   String? selectedProfile;
   ChatRoomModel? get room => controller.currentRoom;
@@ -34,7 +34,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _refresh() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    if (!controller.connected && _isNicknameError(controller.status) && !nicknameDialogOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !controller.connected && !nicknameDialogOpen && _isNicknameError(controller.status)) {
+          _showNicknameError();
+        }
+      });
+    }
   }
 
   Future<void> _loadServers() async {
@@ -71,18 +79,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _saveProfile({SavedServer? existing}) async {
     final defaultName = existing?.name ?? host.text.trim();
-    final nameController = TextEditingController(
-      text: defaultName.isEmpty ? 'Mi servidor' : defaultName,
-    );
+    final nameController = TextEditingController(text: defaultName.isEmpty ? 'Mi servidor' : defaultName);
     final name = await showDialog<String>(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(existing == null ? 'Guardar perfil' : 'Editar perfil'),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Nombre del perfil'),
-        ),
+        content: TextField(controller: nameController, autofocus: true, decoration: const InputDecoration(labelText: 'Nombre del perfil')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
           FilledButton(
@@ -99,22 +101,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (name == null || name.isEmpty) return;
     final p = int.tryParse(port.text.trim()) ?? (secure ? 6697 : 6667);
     final ch = channel.text.trim();
-    final profile = SavedServer(
-      name: name,
-      host: host.text.trim(),
-      port: p,
-      nickname: nick.text.trim(),
-      tls: secure,
-      channels: ch.isEmpty ? const [] : [ch],
-    );
+    final profile = SavedServer(name: name, host: host.text.trim(), port: p, nickname: nick.text.trim(), tls: secure, channels: ch.isEmpty ? const [] : [ch]);
     await storage.upsertServer(profile);
     await storage.setLastServer(name);
     final list = await storage.loadServers();
     if (!mounted) return;
-    setState(() {
-      savedServers = list;
-      selectedProfile = name;
-    });
+    setState(() { savedServers = list; selectedProfile = name; });
   }
 
   Future<void> _deleteProfile(SavedServer profile) async {
@@ -134,10 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (await storage.getLastServer() == profile.name) await storage.clearLastServer();
     final list = await storage.loadServers();
     if (!mounted) return;
-    setState(() {
-      savedServers = list;
-      if (selectedProfile == profile.name) selectedProfile = null;
-    });
+    setState(() { savedServers = list; if (selectedProfile == profile.name) selectedProfile = null; });
   }
 
   bool _isNicknameError(String value) {
@@ -151,6 +140,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showNicknameError() async {
+    if (nicknameDialogOpen || !mounted) return;
+    nicknameDialogOpen = true;
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -162,12 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const Text('El nickname no está disponible. Favor coloque un nuevo nickname.'),
             const SizedBox(height: 14),
-            TextField(
-              controller: nick,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Nuevo nickname'),
-              onSubmitted: (_) => Navigator.pop(context, true),
-            ),
+            TextField(controller: nick, autofocus: true, decoration: const InputDecoration(labelText: 'Nuevo nickname'), onSubmitted: (_) => Navigator.pop(context, true)),
           ],
         ),
         actions: [
@@ -176,7 +162,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
-    if (result == true && mounted && nick.text.trim().isNotEmpty) await _connect();
+    nicknameDialogOpen = false;
+    if (result == true && mounted && nick.text.trim().isNotEmpty) {
+      await _connect();
+    }
   }
 
   Future<void> _connect() async {
@@ -190,14 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     final profileName = selectedProfile?.trim().isNotEmpty == true ? selectedProfile! : h;
-    await storage.upsertServer(SavedServer(
-      name: profileName,
-      host: h,
-      port: p,
-      nickname: n,
-      tls: secure,
-      channels: ch.isEmpty ? const [] : [ch],
-    ));
+    await storage.upsertServer(SavedServer(name: profileName, host: h, port: p, nickname: n, tls: secure, channels: ch.isEmpty ? const [] : [ch]));
     await storage.setLastServer(profileName);
     final list = await storage.loadServers();
     if (mounted) setState(() => savedServers = list);
@@ -206,6 +188,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<ChatRoomModel> _privateRooms() => controller.rooms.values.where((r) => r.privateChat).toList();
   int _privateUnreadTotal() => _privateRooms().fold(0, (sum, r) => sum + r.unread);
+
+  void _openPrivateRoom(String name) {
+    controller.activeRoom = name;
+    final r = controller.rooms[name];
+    if (r != null) r.unread = 0;
+    setState(() {});
+    _scrollBottom();
+  }
 
   void _send() {
     final text = message.text.trim();
@@ -271,9 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _scrollBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (scroll.hasClients) {
-        scroll.animateTo(scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
-      }
+      if (scroll.hasClients) scroll.animateTo(scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
     });
   }
 
@@ -319,39 +307,22 @@ class _HomeScreenState extends State<HomeScreen> {
               const Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(width: 3),
               if (_privateUnreadTotal() > 0)
-                _BlinkingUnread(
-                  label: const Text(''),
-                  count: _privateUnreadTotal(),
-                  color: _nickColor(_privateRooms().first.name),
-                ),
+                _BlinkingUnread(label: const Text(''), count: _privateUnreadTotal(), color: _nickColor(_privateRooms().first.name)),
               PopupMenuButton<String>(
                 tooltip: 'Privados',
                 icon: const Icon(Icons.arrow_drop_down, size: 22),
-                onSelected: (name) {
-                  controller.activeRoom = name;
-                  final r = controller.rooms[name];
-                  if (r != null) r.unread = 0;
-                  setState(() {});
-                  _scrollBottom();
-                },
+                onSelected: _openPrivateRoom,
                 itemBuilder: (_) {
                   final privates = _privateRooms();
-                  if (privates.isEmpty) {
-                    return const [PopupMenuItem<String>(enabled: false, child: Text('No hay privados abiertos'))];
-                  }
+                  if (privates.isEmpty) return const [PopupMenuItem<String>(enabled: false, child: Text('No hay privados abiertos'))];
                   return privates.map((r) => PopupMenuItem<String>(
                     value: r.name,
-                    child: Row(
-                      children: [
-                        Icon(Icons.person_outline, size: 17, color: _nickColor(r.name)),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(r.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(r.name)))),
-                        if (r.unread > 0) ...[
-                          const SizedBox(width: 8),
-                          _BlinkingUnread(label: const Text(''), count: r.unread, color: _nickColor(r.name)),
-                        ],
-                      ],
-                    ),
+                    child: Row(children: [
+                      Icon(Icons.person_outline, size: 17, color: _nickColor(r.name)),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(r.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(r.name)))),
+                      if (r.unread > 0) ...[const SizedBox(width: 8), _BlinkingUnread(label: const Text(''), count: r.unread, color: _nickColor(r.name))],
+                    ]),
                   )).toList();
                 },
               ),
@@ -360,13 +331,11 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: Row(
-                children: [
-                  Icon(Icons.circle, size: 9, color: controller.connected ? const Color(0xFF8FB59B) : Colors.grey),
-                  const SizedBox(width: 6),
-                  SizedBox(width: 150, child: Text(controller.status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
-                ],
-              ),
+              child: Row(children: [
+                Icon(Icons.circle, size: 9, color: controller.connected ? const Color(0xFF8FB59B) : Colors.grey),
+                const SizedBox(width: 6),
+                SizedBox(width: 150, child: Text(controller.status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+              ]),
             ),
           ],
         ),
@@ -378,7 +347,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 children: [
                   Expanded(child: room == null ? _welcome() : _chat(room!)),
-                  if (room != null && !room!.privateChat) usersVisible ? _users(room!) : _collapsedUsers(room!),
+                  if (room != null && !room!.privateChat) ...[
+                    usersVisible ? _users(room!) : _collapsedUsers(room!),
+                    privateVisible ? _privateSidebar() : _collapsedPrivateSidebar(),
+                  ],
                 ],
               ),
             ),
@@ -403,7 +375,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Row(children: [
                 Expanded(child: TextField(controller: port, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto'))),
                 const SizedBox(width: 8),
-                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname'))),
+                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname')),
               ]),
               SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('TLS / SSL'), value: secure, onChanged: controller.connecting ? null : (v) => setState(() => secure = v)),
               FilledButton.icon(onPressed: controller.connecting ? null : (controller.connected ? controller.disconnect : _connect), icon: Icon(controller.connected ? Icons.link_off : Icons.link), label: Text(controller.connected ? 'Desconectar' : 'Conectar')),
@@ -455,7 +427,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ListView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          children: controller.rooms.values.map((r) => Padding(
+          children: controller.rooms.values.where((r) => !r.privateChat).map((r) => Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
             child: Material(
               color: r.name == controller.activeRoom ? const Color(0xFF53677D) : const Color(0xFF252D36),
@@ -465,7 +437,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Padding(
                   padding: const EdgeInsets.only(left: 10, right: 4),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(r.privateChat ? Icons.person_outline : Icons.forum_outlined, size: 14),
+                    const Icon(Icons.forum_outlined, size: 14),
                     const SizedBox(width: 5),
                     _tabTitle(r),
                     const SizedBox(width: 2),
@@ -537,6 +509,57 @@ class _HomeScreenState extends State<HomeScreen> {
           Text('${r.users.length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
         ])),
       ));
+
+  Widget _privateSidebar() {
+    final privates = _privateRooms();
+    return Container(
+      width: 148,
+      decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),
+      child: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(7, 5, 4, 2), child: Row(children: [
+          Expanded(child: Text('PRIVADOS · ${privates.length}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54))),
+          IconButton(onPressed: () => setState(() => privateVisible = false), icon: const Icon(Icons.keyboard_double_arrow_right, size: 17), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28)),
+        ])),
+        Expanded(
+          child: privates.isEmpty
+              ? const Center(child: Padding(padding: EdgeInsets.all(8), child: Text('Sin privados', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11))))
+              : ListView(
+                  padding: const EdgeInsets.all(6),
+                  children: privates.map((r) => ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 2),
+                    selected: r.name == controller.activeRoom,
+                    leading: Icon(Icons.person_outline, size: 17, color: _nickColor(r.name)),
+                    title: r.unread > 0 && r.name != controller.activeRoom
+                        ? _BlinkingUnread(label: Text(r.name), count: r.unread, color: _nickColor(r.name))
+                        : Text(r.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(r.name), fontWeight: FontWeight.w600)),
+                    onTap: () => _openPrivateRoom(r.name),
+                    trailing: IconButton(icon: const Icon(Icons.close, size: 15), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28), onPressed: () => _closeRoom(r.name)),
+                  )).toList(),
+                ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _collapsedPrivateSidebar() => Material(
+        color: const Color(0xFF151B22),
+        child: InkWell(
+          onTap: () => setState(() => privateVisible = true),
+          child: SizedBox(
+            width: 44,
+            child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
+              const SizedBox(height: 8),
+              const Icon(Icons.chat_bubble_outline, size: 20),
+              const SizedBox(height: 4),
+              if (_privateUnreadTotal() > 0)
+                Text('${_privateUnreadTotal()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))
+              else
+                Text('${_privateRooms().length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            ]),
+          ),
+        ),
+      );
 
   Widget _composer() => SafeArea(child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
