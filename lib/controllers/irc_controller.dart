@@ -40,7 +40,7 @@ class IrcController extends ChangeNotifier {
     _reconnectTimer?.cancel(); status = 'Conexión perdida. Reintentando en 5 s...'; notifyListeners();
     _reconnectTimer = Timer(const Duration(seconds: 5), () => connect(host: _lastHost!, port: _lastPort!, nickname: _lastNickname!, secure: _lastSecure, automatic: true));
   }
-  bool _isPermanentConnectionError(String value) { final x = value.toLowerCase(); return x.contains('nickname en uso') || x.contains('nickname no válido') || x.contains('contraseña incorrecta') || x.contains('rechazada/bloqueada'); }
+  bool _isPermanentConnectionError(String value) { final x = value.toLowerCase(); return x.contains('nickname en uso') || x.contains('nickname en conflicto') || x.contains('nickname/recurso no disponible') || x.contains('nickname no válido') || x.contains('contraseña incorrecta') || x.contains('rechazada/bloqueada'); }
   void scheduleReconnect({required String host, required int port, required String nickname, required bool secure}) { _lastHost = host.trim(); _lastPort = port; _lastNickname = nickname.trim(); _lastSecure = secure; _scheduleReconnectIfAllowed(); }
 
   Future<void> disconnect() async { manualDisconnect = true; _reconnectTimer?.cancel(); await client.disconnect(); connected = false; connecting = false; status = 'Desconectado'; notifyListeners(); }
