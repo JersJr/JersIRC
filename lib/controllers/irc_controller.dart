@@ -7,9 +7,6 @@ import '../models/chat_room.dart';
 import '../models/irc_message.dart';
 
 /// UI-independent coordinator for IRC connection state, rooms and incoming events.
-///
-/// The current screen can migrate to this controller incrementally without changing
-/// the IRC transport itself.
 class IrcController extends ChangeNotifier {
   IrcController({IrcClient? client}) : client = client ?? IrcClient() {
     _subscription = this.client.messages.listen(handleMessage);
@@ -21,6 +18,11 @@ class IrcController extends ChangeNotifier {
 
   StreamSubscription<IrcMessage>? _subscription;
   Timer? _reconnectTimer;
+
+  String? _lastHost;
+  int? _lastPort;
+  String? _lastNickname;
+  bool _lastSecure = true;
 
   String? activeRoom;
   String status = 'Desconectado';
@@ -39,6 +41,13 @@ class IrcController extends ChangeNotifier {
   }) async {
     if (connecting || connected) return;
 
+    final cleanHost = host.trim();
+    final cleanNick = nickname.trim();
+    _lastHost = cleanHost;
+    _lastPort = port;
+    _lastNickname = cleanNick;
+    _lastSecure = secure;
+
     _reconnectTimer?.cancel();
     manualDisconnect = false;
     connecting = true;
@@ -48,9 +57,9 @@ class IrcController extends ChangeNotifier {
 
     try {
       await client.connect(
-        host: host.trim(),
+        host: cleanHost,
         port: port,
-        nickname: nickname.trim(),
+        nickname: cleanNick,
         secure: secure,
       );
       connected = true;
@@ -62,10 +71,35 @@ class IrcController extends ChangeNotifier {
       connecting = false;
       status = error.toString().replaceFirst('StateError: ', '').replaceFirst('Exception: ', '');
       notifyListeners();
-      if (!manualDisconnect && !status.toLowerCase().contains('nickname en uso')) {
-        scheduleReconnect(host: host, port: port, nickname: nickname, secure: secure);
-      }
+      _scheduleReconnectIfAllowed();
     }
+  }
+
+  void _scheduleReconnectIfAllowed() {
+    if (manualDisconnect || connected || connecting) return;
+    if (_lastHost == null || _lastPort == null || _lastNickname == null) return;
+    if (_isPermanentConnectionError(status)) return;
+
+    _reconnectTimer?.cancel();
+    status = 'Conexión perdida. Reintentando en 5 s...';
+    notifyListeners();
+    _reconnectTimer = Timer(const Duration(seconds: 5), () {
+      connect(
+        host: _lastHost!,
+        port: _lastPort!,
+        nickname: _lastNickname!,
+        secure: _lastSecure,
+        automatic: true,
+      );
+    });
+  }
+
+  bool _isPermanentConnectionError(String value) {
+    final lower = value.toLowerCase();
+    return lower.contains('nickname en uso') ||
+        lower.contains('nickname no válido') ||
+        lower.contains('contraseña incorrecta') ||
+        lower.contains('rechazada/bloqueada');
   }
 
   void scheduleReconnect({
@@ -74,17 +108,11 @@ class IrcController extends ChangeNotifier {
     required String nickname,
     required bool secure,
   }) {
-    if (manualDisconnect || connected || connecting) return;
-    _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 5), () {
-      connect(
-        host: host,
-        port: port,
-        nickname: nickname,
-        secure: secure,
-        automatic: true,
-      );
-    });
+    _lastHost = host.trim();
+    _lastPort = port;
+    _lastNickname = nickname.trim();
+    _lastSecure = secure;
+    _scheduleReconnectIfAllowed();
   }
 
   Future<void> disconnect() async {
@@ -143,8 +171,13 @@ class IrcController extends ChangeNotifier {
     if (message.command == 'DISCONNECTED') {
       connected = false;
       connecting = false;
-      if (!manualDisconnect) status = 'Conexión perdida';
-      notifyListeners();
+      if (!manualDisconnect) {
+        status = 'Conexión perdida';
+        notifyListeners();
+        _scheduleReconnectIfAllowed();
+      } else {
+        notifyListeners();
+      }
       return;
     }
 
@@ -153,6 +186,7 @@ class IrcController extends ChangeNotifier {
       connecting = false;
       status = message.trailing.isEmpty ? 'Error de conexión' : 'Error: ${message.trailing}';
       notifyListeners();
+      _scheduleReconnectIfAllowed();
       return;
     }
 
@@ -160,6 +194,7 @@ class IrcController extends ChangeNotifier {
       connected = true;
       connecting = false;
       status = 'Conectado';
+      _reconnectTimer?.cancel();
     }
 
     final numeric = int.tryParse(message.command);
