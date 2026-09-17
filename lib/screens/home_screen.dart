@@ -84,10 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: const InputDecoration(labelText: 'Nombre del perfil'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
           FilledButton(
             onPressed: () {
               final v = nameController.text.trim();
@@ -127,22 +124,14 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Eliminar perfil'),
         content: Text('¿Eliminar "${profile.name}"?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Eliminar'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Eliminar')),
         ],
       ),
     );
     if (ok != true) return;
     await storage.deleteServer(profile.name);
-    if (await storage.getLastServer() == profile.name) {
-      await storage.clearLastServer();
-    }
+    if (await storage.getLastServer() == profile.name) await storage.clearLastServer();
     final list = await storage.loadServers();
     if (!mounted) return;
     setState(() {
@@ -151,16 +140,56 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  bool _isNicknameError(String value) {
+    final x = value.toLowerCase();
+    return x.contains('nickname en uso') ||
+        x.contains('nickname en conflicto') ||
+        x.contains('nickname/recurso no disponible') ||
+        x.contains('nickname no válido') ||
+        x.contains('contraseña incorrecta') ||
+        x.contains('contraseña incorrecta o requerida');
+  }
+
+  Future<void> _showNicknameError() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('Nickname ocupado o registrado'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('El nickname no está disponible. Favor coloque un nuevo nickname.'),
+            const SizedBox(height: 14),
+            TextField(
+              controller: nick,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Nuevo nickname'),
+              onSubmitted: (_) => Navigator.pop(context, true),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Reintentar')),
+        ],
+      ),
+    );
+    if (result == true && mounted && nick.text.trim().isNotEmpty) await _connect();
+  }
+
   Future<void> _connect() async {
     final p = int.tryParse(port.text) ?? (secure ? 6697 : 6667);
     final h = host.text.trim();
     final n = nick.text.trim();
     final ch = channel.text.trim();
     await controller.connect(host: h, port: p, nickname: n, secure: secure);
-    if (!controller.connected) return;
-    final profileName = selectedProfile?.trim().isNotEmpty == true
-        ? selectedProfile!
-        : h;
+    if (!controller.connected) {
+      if (mounted && _isNicknameError(controller.status)) await _showNicknameError();
+      return;
+    }
+    final profileName = selectedProfile?.trim().isNotEmpty == true ? selectedProfile! : h;
     await storage.upsertServer(SavedServer(
       name: profileName,
       host: h,
@@ -175,14 +204,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (ch.isNotEmpty) controller.join(ch);
   }
 
+  List<ChatRoomModel> _privateRooms() => controller.rooms.values.where((r) => r.privateChat).toList();
+  int _privateUnreadTotal() => _privateRooms().fold(0, (sum, r) => sum + r.unread);
+
   void _send() {
     final text = message.text.trim();
     if (text.isEmpty || !controller.connected) return;
-    if (text.startsWith('/')) {
-      _command(text.substring(1));
-    } else {
-      controller.sendMessage(text);
-    }
+    if (text.startsWith('/')) _command(text.substring(1)); else controller.sendMessage(text);
     message.clear();
     _scrollBottom();
   }
@@ -193,43 +221,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final cmd = parts.first.toLowerCase();
     final args = parts.skip(1).toList();
     switch (cmd) {
-      case 'join':
-        if (args.isNotEmpty) controller.join(args.first);
-        break;
-      case 'part':
-        controller.closeRoom(room?.name ?? '');
-        break;
-      case 'nick':
-        if (args.isNotEmpty) controller.changeNick(args.first);
-        break;
+      case 'join': if (args.isNotEmpty) controller.join(args.first); break;
+      case 'part': controller.closeRoom(room?.name ?? ''); break;
+      case 'nick': if (args.isNotEmpty) controller.changeNick(args.first); break;
       case 'msg':
         if (args.length >= 2) {
           final target = args.first;
-          final text = args.skip(1).join(' ');
           controller.openPrivate(target);
-          controller.sendPrivate(target, text);
+          controller.sendPrivate(target, args.skip(1).join(' '));
         }
         break;
-      case 'notice':
-        if (args.length >= 2) controller.sendNotice(args.first, args.skip(1).join(' '));
-        break;
-      case 'me':
-        if (room != null && args.isNotEmpty) controller.sendAction(room!.name, args.join(' '));
-        break;
-      case 'query':
-        if (args.isNotEmpty) controller.openPrivate(args.first);
-        break;
-      case 'whois':
-        if (args.isNotEmpty) controller.client.send('WHOIS ${args.first}');
-        break;
-      case 'ignore':
-        if (args.isNotEmpty) controller.toggleIgnore(args.first);
-        break;
-      case 'raw':
-        if (args.isNotEmpty) controller.client.send(args.join(' '));
-        break;
-      default:
-        controller.client.send(raw);
+      case 'notice': if (args.length >= 2) controller.sendNotice(args.first, args.skip(1).join(' ')); break;
+      case 'me': if (room != null && args.isNotEmpty) controller.sendAction(room!.name, args.join(' ')); break;
+      case 'query': if (args.isNotEmpty) controller.openPrivate(args.first); break;
+      case 'whois': if (args.isNotEmpty) controller.client.send('WHOIS ${args.first}'); break;
+      case 'ignore': if (args.isNotEmpty) controller.toggleIgnore(args.first); break;
+      case 'raw': if (args.isNotEmpty) controller.client.send(args.join(' ')); break;
+      default: controller.client.send(raw);
     }
   }
 
@@ -255,9 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onIgnore: () => controller.toggleIgnore(nickname),
         onMode: (mode) {
           final target = room?.name;
-          if (target != null && target.startsWith('#')) {
-            controller.client.send('MODE $target $mode $nickname');
-          }
+          if (target != null && target.startsWith('#')) controller.client.send('MODE $target $mode $nickname');
         },
       ),
     );
@@ -266,11 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _scrollBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (scroll.hasClients) {
-        scroll.animateTo(
-          scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-        );
+        scroll.animateTo(scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
       }
     });
   }
@@ -309,11 +311,50 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
           backgroundColor: const Color(0xFF151B22),
-          title: const Row(
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.forum_rounded, size: 22),
-              SizedBox(width: 8),
-              Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
+              const Icon(Icons.forum_rounded, size: 22),
+              const SizedBox(width: 8),
+              const Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(width: 3),
+              if (_privateUnreadTotal() > 0)
+                _BlinkingUnread(
+                  label: const Text(''),
+                  count: _privateUnreadTotal(),
+                  color: _nickColor(_privateRooms().first.name),
+                ),
+              PopupMenuButton<String>(
+                tooltip: 'Privados',
+                icon: const Icon(Icons.arrow_drop_down, size: 22),
+                onSelected: (name) {
+                  controller.activeRoom = name;
+                  final r = controller.rooms[name];
+                  if (r != null) r.unread = 0;
+                  setState(() {});
+                  _scrollBottom();
+                },
+                itemBuilder: (_) {
+                  final privates = _privateRooms();
+                  if (privates.isEmpty) {
+                    return const [PopupMenuItem<String>(enabled: false, child: Text('No hay privados abiertos'))];
+                  }
+                  return privates.map((r) => PopupMenuItem<String>(
+                    value: r.name,
+                    child: Row(
+                      children: [
+                        Icon(Icons.person_outline, size: 17, color: _nickColor(r.name)),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(r.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(r.name)))),
+                        if (r.unread > 0) ...[
+                          const SizedBox(width: 8),
+                          _BlinkingUnread(label: const Text(''), count: r.unread, color: _nickColor(r.name)),
+                        ],
+                      ],
+                    ),
+                  )).toList();
+                },
+              ),
             ],
           ),
           actions: [
@@ -323,10 +364,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Icon(Icons.circle, size: 9, color: controller.connected ? const Color(0xFF8FB59B) : Colors.grey),
                   const SizedBox(width: 6),
-                  SizedBox(
-                    width: 150,
-                    child: Text(controller.status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-                  ),
+                  SizedBox(width: 150, child: Text(controller.status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
                 ],
               ),
             ),
@@ -340,8 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 children: [
                   Expanded(child: room == null ? _welcome() : _chat(room!)),
-                  if (room != null && !room!.privateChat)
-                    usersVisible ? _users(room!) : _collapsedUsers(room!),
+                  if (room != null && !room!.privateChat) usersVisible ? _users(room!) : _collapsedUsers(room!),
                 ],
               ),
             ),
@@ -363,24 +400,13 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 10),
               TextField(controller: host, decoration: const InputDecoration(labelText: 'Servidor')),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(child: TextField(controller: port, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto'))),
-                  const SizedBox(width: 8),
-                  Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname'))),
-                ],
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('TLS / SSL'),
-                value: secure,
-                onChanged: controller.connecting ? null : (v) => setState(() => secure = v),
-              ),
-              FilledButton.icon(
-                onPressed: controller.connecting ? null : (controller.connected ? controller.disconnect : _connect),
-                icon: Icon(controller.connected ? Icons.link_off : Icons.link),
-                label: Text(controller.connected ? 'Desconectar' : 'Conectar'),
-              ),
+              Row(children: [
+                Expanded(child: TextField(controller: port, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto'))),
+                const SizedBox(width: 8),
+                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname'))),
+              ]),
+              SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('TLS / SSL'), value: secure, onChanged: controller.connecting ? null : (v) => setState(() => secure = v)),
+              FilledButton.icon(onPressed: controller.connecting ? null : (controller.connected ? controller.disconnect : _connect), icon: Icon(controller.connected ? Icons.link_off : Icons.link), label: Text(controller.connected ? 'Desconectar' : 'Conectar')),
               const Divider(height: 28, color: Colors.white12),
               const Text('PERFILES', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
               const SizedBox(height: 8),
@@ -388,56 +414,41 @@ class _HomeScreenState extends State<HomeScreen> {
               if (savedServers.isEmpty)
                 const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('No hay perfiles guardados', style: TextStyle(color: Colors.white54)))
               else
-                ...savedServers.map(
-                  (s) => ListTile(
-                    selected: selectedProfile == s.name,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(s.tls ? Icons.lock_outline : Icons.public),
-                    title: Text(s.name, overflow: TextOverflow.ellipsis),
-                    subtitle: Text('${s.host}:${s.port} • ${s.nickname}', overflow: TextOverflow.ellipsis),
-                    onTap: () {
-                      _applyProfile(s);
-                      Navigator.pop(context);
-                    },
-                    trailing: PopupMenuButton<String>(
-                      onSelected: (v) {
-                        if (v == 'edit') _saveProfile(existing: s);
-                        if (v == 'delete') _deleteProfile(s);
-                      },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'edit', child: Text('Editar')),
-                        PopupMenuItem(value: 'delete', child: Text('Eliminar')),
-                      ],
-                    ),
+                ...savedServers.map((s) => ListTile(
+                  selected: selectedProfile == s.name,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(s.tls ? Icons.lock_outline : Icons.public),
+                  title: Text(s.name, overflow: TextOverflow.ellipsis),
+                  subtitle: Text('${s.host}:${s.port} • ${s.nickname}', overflow: TextOverflow.ellipsis),
+                  onTap: () { _applyProfile(s); Navigator.pop(context); },
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (v) { if (v == 'edit') _saveProfile(existing: s); if (v == 'delete') _deleteProfile(s); },
+                    itemBuilder: (_) => const [PopupMenuItem(value: 'edit', child: Text('Editar')), PopupMenuItem(value: 'delete', child: Text('Eliminar'))],
                   ),
-                ),
+                )),
               const Divider(height: 28, color: Colors.white12),
               const Text('UNIRSE A CANAL', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(child: TextField(controller: channel, decoration: const InputDecoration(hintText: '#panama'))),
-                  const SizedBox(width: 8),
-                  IconButton.filled(onPressed: controller.connected ? () => controller.join(channel.text) : null, icon: const Icon(Icons.add)),
-                ],
-              ),
+              Row(children: [
+                Expanded(child: TextField(controller: channel, decoration: const InputDecoration(hintText: '#panama'))),
+                const SizedBox(width: 8),
+                IconButton.filled(onPressed: controller.connected ? () => controller.join(channel.text) : null, icon: const Icon(Icons.add)),
+              ]),
             ],
           ),
         ),
       );
 
-  Widget _welcome() => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.forum_outlined, size: 62, color: Colors.white.withOpacity(.4)),
-            const SizedBox(height: 14),
-            const Text('Bienvenido a JersIRC', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            const Text('Conecta a un servidor IRC para comenzar', style: TextStyle(color: Colors.white54)),
-          ],
-        ),
-      );
+  Widget _welcome() => Center(child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.forum_outlined, size: 62, color: Colors.white.withOpacity(.4)),
+          const SizedBox(height: 14),
+          const Text('Bienvenido a JersIRC', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          const Text('Conecta a un servidor IRC para comenzar', style: TextStyle(color: Colors.white54)),
+        ],
+      ));
 
   Widget _tabs() => SizedBox(
         height: 46,
@@ -450,28 +461,16 @@ class _HomeScreenState extends State<HomeScreen> {
               color: r.name == controller.activeRoom ? const Color(0xFF53677D) : const Color(0xFF252D36),
               borderRadius: BorderRadius.circular(18),
               child: InkWell(
-                onTap: () {
-                  controller.activeRoom = r.name;
-                  r.unread = 0;
-                  setState(() {});
-                  _scrollBottom();
-                },
+                onTap: () { controller.activeRoom = r.name; r.unread = 0; setState(() {}); _scrollBottom(); },
                 child: Padding(
                   padding: const EdgeInsets.only(left: 10, right: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(r.privateChat ? Icons.person_outline : Icons.forum_outlined, size: 14),
-                      const SizedBox(width: 5),
-                      _tabTitle(r),
-                      const SizedBox(width: 2),
-                      InkWell(
-                        onTap: () => _closeRoom(r.name),
-                        borderRadius: BorderRadius.circular(12),
-                        child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close, size: 14)),
-                      ),
-                    ],
-                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(r.privateChat ? Icons.person_outline : Icons.forum_outlined, size: 14),
+                    const SizedBox(width: 5),
+                    _tabTitle(r),
+                    const SizedBox(width: 2),
+                    InkWell(onTap: () => _closeRoom(r.name), borderRadius: BorderRadius.circular(12), child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close, size: 14))),
+                  ]),
                 ),
               ),
             ),
@@ -485,157 +484,77 @@ class _HomeScreenState extends State<HomeScreen> {
     return _BlinkingUnread(label: label, count: r.unread, color: _nickColor(r.name));
   }
 
-  Widget _chat(ChatRoomModel r) => Column(
-        children: [
-          if (!controller.connected)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(6),
-              color: Colors.orange.withOpacity(.12),
-              child: Text(controller.status, style: const TextStyle(fontSize: 12)),
-            ),
-          Expanded(
-            child: r.messages.isEmpty
-                ? Center(child: Text(r.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)))
-                : ListView.builder(
-                    controller: scroll,
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                    itemCount: r.messages.length,
-                    itemBuilder: (context, i) {
-                      final m = r.messages[i];
-                      final user = m.nick ?? 'Sistema';
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 5),
-                        child: RichText(
-                          text: TextSpan(
-                            children: [
-                              WidgetSpan(
-                                alignment: PlaceholderAlignment.middle,
-                                child: InkWell(
-                                  onTap: user == 'Sistema' ? null : () => _showUserActions(user),
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-                                    child: Text(
-                                      '$user:',
-                                      style: TextStyle(fontWeight: FontWeight.bold, color: _nickColor(user)),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              TextSpan(
-                                text: ' ${_clean(m.trailing)}',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      );
+  Widget _chat(ChatRoomModel r) => Column(children: [
+    if (!controller.connected)
+      Container(width: double.infinity, padding: const EdgeInsets.all(6), color: Colors.orange.withOpacity(.12), child: Text(controller.status, style: const TextStyle(fontSize: 12))),
+    Expanded(child: r.messages.isEmpty
+      ? Center(child: Text(r.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)))
+      : ListView.builder(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+          itemCount: r.messages.length,
+          itemBuilder: (context, i) {
+            final m = r.messages[i];
+            final user = m.nick ?? 'Sistema';
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: RichText(text: TextSpan(children: [
+                WidgetSpan(alignment: PlaceholderAlignment.middle, child: InkWell(
+                  onTap: user == 'Sistema' ? null : () => _showUserActions(user),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1), child: Text('$user:', style: TextStyle(fontWeight: FontWeight.bold, color: _nickColor(user)))),
+                )),
+                TextSpan(text: ' ${_clean(m.trailing)}', style: const TextStyle(color: Colors.white)),
+              ])),
+            );
+          },
+        )),
+  ]);
 
   Widget _users(ChatRoomModel r) => Container(
         width: 148,
-        decoration: const BoxDecoration(
-          color: Color(0xFF151B22),
-          border: Border(left: BorderSide(color: Colors.white10)),
-        ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(7, 5, 4, 2),
-              child: Row(
-                children: [
-                  Expanded(child: Text('USUARIOS · ${r.users.length}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54))),
-                  IconButton(
-                    onPressed: () => setState(() => usersVisible = false),
-                    icon: const Icon(Icons.keyboard_double_arrow_right, size: 17),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(6),
-                children: _sortedUsers(r).map((u) => ListTile(
-                  dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 2),
-                  title: Text(
-                    '${u.prefixes}${u.nick}',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: _nickColor(u.nick), fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () => _showUserActions(u.nick),
-                )).toList(),
-              ),
-            ),
-          ],
-        ),
+        decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),
+        child: Column(children: [
+          Padding(padding: const EdgeInsets.fromLTRB(7, 5, 4, 2), child: Row(children: [
+            Expanded(child: Text('USUARIOS · ${r.users.length}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54))),
+            IconButton(onPressed: () => setState(() => usersVisible = false), icon: const Icon(Icons.keyboard_double_arrow_right, size: 17), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28)),
+          ])),
+          Expanded(child: ListView(padding: const EdgeInsets.all(6), children: _sortedUsers(r).map((u) => ListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 2),
+            title: Text('${u.prefixes}${u.nick}', overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(u.nick), fontWeight: FontWeight.w600)),
+            onTap: () => _showUserActions(u.nick),
+          )).toList())),
+        ]),
       );
 
-  Widget _collapsedUsers(ChatRoomModel r) => Material(
-        color: const Color(0xFF151B22),
-        child: InkWell(
-          onTap: () => setState(() => usersVisible = true),
-          child: SizedBox(
-            width: 44,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                const SizedBox(height: 8),
-                const Icon(Icons.people_alt_outlined, size: 20),
-                const SizedBox(height: 4),
-                Text('${r.users.length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              ],
-            ),
-          ),
-        ),
-      );
+  Widget _collapsedUsers(ChatRoomModel r) => Material(color: const Color(0xFF151B22), child: InkWell(
+        onTap: () => setState(() => usersVisible = true),
+        child: SizedBox(width: 44, child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
+          const SizedBox(height: 8),
+          const Icon(Icons.people_alt_outlined, size: 20),
+          const SizedBox(height: 4),
+          Text('${r.users.length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+        ])),
+      ));
 
-  Widget _composer() => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: message,
-                  focusNode: messageFocus,
-                  enabled: controller.connected,
-                  onSubmitted: (_) => _send(),
-                  maxLines: 4,
-                  minLines: 1,
-                  decoration: const InputDecoration(hintText: 'Escribe un mensaje o /comando'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(onPressed: controller.connected ? _send : null, icon: const Icon(Icons.send_rounded)),
-            ],
-          ),
-        ),
-      );
+  Widget _composer() => SafeArea(child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        child: Row(children: [
+          Expanded(child: TextField(controller: message, focusNode: messageFocus, enabled: controller.connected, onSubmitted: (_) => _send(), maxLines: 4, minLines: 1, decoration: const InputDecoration(hintText: 'Escribe un mensaje o /comando'))),
+          const SizedBox(width: 8),
+          IconButton.filled(onPressed: controller.connected ? _send : null, icon: const Icon(Icons.send_rounded)),
+        ]),
+      ));
 
-  String _clean(String s) => s
-      .replaceAll(RegExp(r'\u0003(?:\d{1,2}(?:,\d{1,2})?)?'), '')
-      .replaceAll(RegExp(r'[\u0002\u000F\u0016\u001D\u001F]'), '');
+  String _clean(String s) => s.replaceAll(RegExp(r'\u0003(?:\d{1,2}(?:,\d{1,2})?)?'), '').replaceAll(RegExp(r'[\u0002\u000F\u0016\u001D\u001F]'), '');
 
   Color _nickColor(String user) {
     var h = 0;
     for (final c in user.codeUnits) h = (h * 31 + c) & 0x7fffffff;
     const c = [
-      Color(0xFF7CB8FF),
-      Color(0xFFFFA6C9),
-      Color(0xFFB9E986),
-      Color(0xFFFFCC80),
-      Color(0xFFC7A7FF),
-      Color(0xFF72E0D1),
-      Color(0xFFFF9E80),
-      Color(0xFF9FA8DA),
+      Color(0xFF7CB8FF), Color(0xFFFFA6C9), Color(0xFFB9E986), Color(0xFFFFCC80),
+      Color(0xFFC7A7FF), Color(0xFF72E0D1), Color(0xFFFF9E80), Color(0xFF9FA8DA),
     ];
     return c[h % c.length];
   }
@@ -658,24 +577,18 @@ class _BlinkingUnread extends StatefulWidget {
 class _BlinkingUnreadState extends State<_BlinkingUnread> with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 650))..repeat(reverse: true);
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  void dispose() { _controller.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _controller,
     builder: (_, __) {
       final t = Curves.easeInOut.transform(_controller.value);
       final c = Color.lerp(Theme.of(context).colorScheme.onSurface, widget.color, t)!;
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(widget.label is Text ? (widget.label as Text).data ?? '' : '', style: TextStyle(fontSize: 12, color: c, fontWeight: FontWeight.w700)),
-          const SizedBox(width: 4),
-          Text('(${widget.count})', style: TextStyle(fontSize: 12, color: c, fontWeight: FontWeight.bold)),
-        ],
-      );
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(widget.label is Text ? (widget.label as Text).data ?? '' : '', style: TextStyle(fontSize: 12, color: c, fontWeight: FontWeight.w700)),
+        const SizedBox(width: 4),
+        Text('(${widget.count})', style: TextStyle(fontSize: 12, color: c, fontWeight: FontWeight.bold)),
+      ]);
     },
   );
 }
