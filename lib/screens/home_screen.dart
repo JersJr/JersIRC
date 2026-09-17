@@ -60,6 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'notice': if (args.length >= 2) controller.sendNotice(args.first, args.skip(1).join(' ')); break;
       case 'me': if (room != null && args.isNotEmpty) controller.sendAction(room!.name, args.join(' ')); break;
       case 'query': if (args.isNotEmpty) controller.openPrivate(args.first); break;
+      case 'whois': if (args.isNotEmpty) controller.client.send('WHOIS ${args.first}'); break;
       case 'ignore': if (args.isNotEmpty) controller.toggleIgnore(args.first); break;
       case 'raw': if (args.isNotEmpty) controller.client.send(args.join(' ')); break;
       default: controller.client.send(raw);
