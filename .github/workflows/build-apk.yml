@@ -32,6 +32,9 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Fix nickname field syntax
+        run: sed -i 's/Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: '\''Nickname'\'')),/Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: '\''Nickname'\''))),/' lib/screens/home_screen.dart
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
