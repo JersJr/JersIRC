@@ -3,6 +3,7 @@ import '../controllers/irc_controller.dart';
 import '../models/chat_room.dart';
 import '../models.dart';
 import '../storage.dart';
+import '../widgets/user_action_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -67,6 +68,28 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _showUserActions(String nickname) {
+    final ignored = controller.ignoredUsers.contains(nickname.toLowerCase());
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF202832),
+      showDragHandle: true,
+      builder: (_) => UserActionSheet(
+        nickname: nickname,
+        isIgnored: ignored,
+        onPrivate: () => controller.openPrivate(nickname),
+        onWhois: () => controller.client.send('WHOIS $nickname'),
+        onIgnore: () => controller.toggleIgnore(nickname),
+        onMode: (mode) {
+          final target = room?.name;
+          if (target != null && target.startsWith('#')) {
+            controller.client.send('MODE $target $mode $nickname');
+          }
+        },
+      ),
+    );
+  }
+
   void _scrollBottom() { WidgetsBinding.instance.addPostFrameCallback((_) { if (scroll.hasClients) scroll.animateTo(scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut); }); }
   @override void dispose() { controller.removeListener(_refresh); controller.dispose(); for (final c in [host, port, nick, channel, message, scroll]) c.dispose(); super.dispose(); }
 
@@ -83,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _chat(ChatRoomModel r) => Column(children: [if (!controller.connected) Container(width: double.infinity, padding: const EdgeInsets.all(6), color: Colors.orange.withOpacity(.12), child: Text(controller.status, style: const TextStyle(fontSize: 12))), Expanded(child: r.messages.isEmpty ? Center(child: Text(r.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))) : ListView.builder(controller: scroll, padding: const EdgeInsets.fromLTRB(16, 12, 16, 20), itemCount: r.messages.length, itemBuilder: (context, i) { final m = r.messages[i], user = m.nick ?? 'Sistema'; return Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: RichText(text: TextSpan(children: [TextSpan(text: '$user: ', style: TextStyle(fontWeight: FontWeight.bold, color: _nickColor(user))), TextSpan(text: _clean(m.trailing), style: const TextStyle(color: Colors.white))]))); }))]);
 
-  Widget _users(ChatRoomModel r) => Container(width: 148, decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))), child: ListView(padding: const EdgeInsets.all(6), children: [Row(children: [const Expanded(child: Text('USUARIOS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54))), IconButton(onPressed: () => setState(() => usersVisible = false), icon: const Icon(Icons.keyboard_double_arrow_right, size: 17))]), ...r.users.values.map((u) => ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 2), leading: Text(u.prefixes.isEmpty ? '•' : u.prefixes), title: Text(u.nick, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(u.nick), fontWeight: FontWeight.w600)), onTap: () => controller.openPrivate(u.nick))) ]));
+  Widget _users(ChatRoomModel r) => Container(width: 148, decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))), child: ListView(padding: const EdgeInsets.all(6), children: [Row(children: [const Expanded(child: Text('USUARIOS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54))), IconButton(onPressed: () => setState(() => usersVisible = false), icon: const Icon(Icons.keyboard_double_arrow_right, size: 17))]), ...r.users.values.map((u) => ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 2), leading: Text(u.prefixes.isEmpty ? '•' : u.prefixes), title: Text(u.nick, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(u.nick), fontWeight: FontWeight.w600)), onTap: () => _showUserActions(u.nick))) ]));
 
   Widget _composer() => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(10, 8, 10, 10), child: Row(children: [Expanded(child: TextField(controller: message, enabled: controller.connected, onSubmitted: (_) => _send(), maxLines: 4, minLines: 1, decoration: const InputDecoration(hintText: 'Escribe un mensaje o /comando'))), const SizedBox(width: 8), IconButton.filled(onPressed: controller.connected ? _send : null, icon: const Icon(Icons.send_rounded))])));
   String _clean(String s) => s.replaceAll(RegExp(r'\u0003(?:\d{1,2}(?:,\d{1,2})?)?'), '').replaceAll(RegExp(r'[\u0002\u000F\u0016\u001D\u001F]'), '');
