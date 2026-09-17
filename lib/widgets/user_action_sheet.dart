@@ -8,6 +8,7 @@ class UserActionSheet extends StatelessWidget {
     required this.onPrivate,
     required this.onWhois,
     required this.onIgnore,
+    required this.onMention,
     required this.onMode,
   });
 
@@ -16,6 +17,7 @@ class UserActionSheet extends StatelessWidget {
   final VoidCallback onPrivate;
   final VoidCallback onWhois;
   final VoidCallback onIgnore;
+  final VoidCallback onMention;
   final void Function(String mode) onMode;
 
   @override
@@ -34,6 +36,14 @@ class UserActionSheet extends StatelessWidget {
             onTap: () {
               Navigator.pop(context);
               onPrivate();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.alternate_email),
+            title: const Text('Mencionar'),
+            onTap: () {
+              Navigator.pop(context);
+              onMention();
             },
           ),
           ListTile(
