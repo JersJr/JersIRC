@@ -55,7 +55,7 @@ jobs:
       - name: Enable Android internet permission
         run: sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
 
-      - name: Apply safe UI patch
+      - name: Apply safe UI and nickname patch
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -64,6 +64,23 @@ jobs:
           path = Path('lib/screens/home_screen.dart')
           text = path.read_text(encoding='utf-8')
 
+          # Keep the source behavior from the known working branch and only
+          # change the initial nickname to a generated LC-#### / CFS-####.
+          import_line = "import '../nickname_generator.dart';\n"
+          anchor = "import '../controllers/irc_controller.dart';\n"
+          if import_line not in text:
+              if text.count(anchor) != 1:
+                  raise SystemExit('Nickname patch failed: import anchor not found')
+              text = text.replace(anchor, anchor + import_line, 1)
+
+          old_nick = "  final nick = TextEditingController(text: 'JersIRC_User');"
+          new_nick = "  final nick = TextEditingController(text: NicknameGenerator.generate());"
+          if text.count(old_nick) == 1:
+              text = text.replace(old_nick, new_nick, 1)
+          elif new_nick not in text:
+              raise SystemExit('Nickname patch failed: default nickname line not found')
+
+          # Preserve all existing UI patches already applied by this workflow.
           text = text.replace("                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname')),\n", "                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname'))),\n", 1)
 
           text, n = re.subn(r"\n\s*privateVisible \? _privateSidebar\(\) : _collapsedPrivateSidebar\(\),", "", text, count=1)
@@ -93,9 +110,8 @@ jobs:
           text = text.replace('            mainAxisSize: MainAxisSize.min,\n', '            mainAxisSize: MainAxisSize.max,\n', 1)
           old_status = "                SizedBox(width: 150, child: Text(controller.status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),\n"
           new_status = "                SizedBox(width: MediaQuery.sizeOf(context).width < 400 ? 105 : 150, child: Text(controller.status, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),\n"
-          if text.count(old_status) != 1:
-              raise SystemExit('UI patch failed: status widget not found')
-          text = text.replace(old_status, new_status, 1)
+          if text.count(old_status) == 1:
+              text = text.replace(old_status, new_status, 1)
 
           path.write_text(text, encoding='utf-8')
           PY
