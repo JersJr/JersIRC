@@ -64,28 +64,30 @@ jobs:
           path = Path('lib/screens/home_screen.dart')
           text = path.read_text(encoding='utf-8')
 
-          # Preserve the known working #95 nickname syntax repair.
           text = text.replace("                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname')),\n", "                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname'))),\n", 1)
 
-          # Remove only the private sidebar; keep the users panel unchanged.
           text, n = re.subn(r"\n\s*privateVisible \? _privateSidebar\(\) : _collapsedPrivateSidebar\(\),", "", text, count=1)
           if n != 1:
               raise SystemExit('UI patch failed: private sidebar line not found')
+
           marker = "                      if (r.unread > 0) ...[const SizedBox(width: 8), _BlinkingUnread(label: const Text(''), count: r.unread, color: _nickColor(r.name))],\n"
           addition = marker + "                      IconButton(tooltip: 'Cerrar privado', icon: const Icon(Icons.close, size: 17), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 30, minHeight: 30), onPressed: () => _closeRoom(r.name)),\n"
           if text.count(marker) != 1:
               raise SystemExit('UI patch failed: private dropdown marker not found')
           text = text.replace(marker, addition, 1)
+
           marker = "  Widget _chat(ChatRoomModel r) => Column(children: [\n    if (!controller.connected)\n"
           header = "  Widget _chat(ChatRoomModel r) => Column(children: [\n    if (r.privateChat)\n      Container(\n        width: double.infinity,\n        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),\n        decoration: const BoxDecoration(color: Color(0xFF202832), border: Border(bottom: BorderSide(color: Colors.white10))),\n        child: Row(children: [\n          Icon(Icons.person_outline, size: 18, color: _nickColor(r.name)),\n          const SizedBox(width: 8),\n          const Text('Chat privado con ', style: TextStyle(color: Colors.white70, fontSize: 13)),\n          Expanded(child: Text(r.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(r.name), fontSize: 13, fontWeight: FontWeight.w700))),\n        ]),\n      ),\n    if (!controller.connected)\n"
           if text.count(marker) != 1:
               raise SystemExit('UI patch failed: _chat insertion point not found')
           text = text.replace(marker, header, 1)
+
           marker = "                  Expanded(child: room == null ? _welcome() : _chat(room!)),\n"
-          swipe = "                  Expanded(\n                    child: room == null\n                        ? _welcome()\n                        : (room!.privateChat\n                            ? Dismissible(\n                                key: ValueKey('private-\${room!.name}'),\n                                direction: DismissDirection.endToStart,\n                                secondaryBackground: Container(\n                                  alignment: Alignment.centerRight,\n                                  padding: const EdgeInsets.symmetric(horizontal: 24),\n                                  color: Colors.redAccent.withOpacity(.18),\n                                  child: const Icon(Icons.delete_outline, color: Colors.redAccent),\n                                ),\n                                onDismissed: (_) => _closeRoom(room!.name),\n                                child: _chat(room!),\n                              )\n                            : _chat(room!)),\n                  ),\n"
+          swipe = "                  Expanded(\n                    child: room == null\n                        ? _welcome()\n                        : (room!.privateChat\n                            ? Dismissible(\n                                key: ValueKey('private-' + room!.name),\n                                direction: DismissDirection.endToStart,\n                                secondaryBackground: Container(\n                                  alignment: Alignment.centerRight,\n                                  padding: const EdgeInsets.symmetric(horizontal: 24),\n                                  color: Colors.redAccent.withOpacity(.18),\n                                  child: const Icon(Icons.delete_outline, color: Colors.redAccent),\n                                ),\n                                onDismissed: (_) => _closeRoom(room!.name),\n                                child: _chat(room!),\n                              )\n                            : _chat(room!)),\n                  ),\n"
           if text.count(marker) != 1:
               raise SystemExit('UI patch failed: chat insertion point not found')
           text = text.replace(marker, swipe, 1)
+
           path.write_text(text, encoding='utf-8')
           PY
 
