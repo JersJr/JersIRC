@@ -88,6 +88,15 @@ jobs:
               raise SystemExit('UI patch failed: chat insertion point not found')
           text = text.replace(marker, swipe, 1)
 
+          # Responsive AppBar: keep the left controls together while giving the
+          # connection status a fixed, right-aligned area on narrow phones.
+          text = text.replace('            mainAxisSize: MainAxisSize.min,\n', '            mainAxisSize: MainAxisSize.max,\n', 1)
+          old_status = "                SizedBox(width: 150, child: Text(controller.status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),\n"
+          new_status = "                SizedBox(width: MediaQuery.sizeOf(context).width < 400 ? 105 : 150, child: Text(controller.status, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),\n"
+          if text.count(old_status) != 1:
+              raise SystemExit('UI patch failed: status widget not found')
+          text = text.replace(old_status, new_status, 1)
+
           path.write_text(text, encoding='utf-8')
           PY
 
