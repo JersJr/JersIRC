@@ -1,7 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'screens/home_screen.dart';
 
-void main() => runApp(const JersIrcApp());
+void main() {
+  FlutterForegroundTask.initCommunicationPort();
+  FlutterForegroundTask.init(
+    androidNotificationOptions: AndroidNotificationOptions(
+      channelId: 'jersirc_connection',
+      channelName: 'JersIRC',
+      channelDescription: 'Mantiene activa la conexión IRC de JersIRC.',
+      channelImportance: NotificationChannelImportance.LOW,
+      onlyAlertOnce: true,
+    ),
+    iosNotificationOptions: const IOSNotificationOptions(
+      showNotification: false,
+      playSound: false,
+    ),
+    foregroundTaskOptions: const ForegroundTaskOptions(
+      eventAction: ForegroundTaskEventAction.repeat(15000),
+      autoRunOnBoot: false,
+      autoRunOnMyPackageReplaced: false,
+      allowWakeLock: false,
+      allowWifiLock: false,
+    ),
+  );
+  runApp(const JersIrcApp());
+}
 
 class JersIrcApp extends StatelessWidget {
   const JersIrcApp({super.key});
