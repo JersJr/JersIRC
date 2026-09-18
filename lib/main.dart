@@ -16,7 +16,7 @@ void main() {
       showNotification: false,
       playSound: false,
     ),
-    foregroundTaskOptions: const ForegroundTaskOptions(
+    foregroundTaskOptions: ForegroundTaskOptions(
       eventAction: ForegroundTaskEventAction.repeat(15000),
       autoRunOnBoot: false,
       autoRunOnMyPackageReplaced: false,
