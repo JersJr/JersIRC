@@ -131,7 +131,6 @@ class IrcClient {
   }
 
   Future<void> dispose() async {
-    await disconnect();
     FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
     await _messages.close();
   }
