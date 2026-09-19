@@ -304,13 +304,16 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Icon(Icons.forum_rounded, size: 22),
               const SizedBox(width: 8),
-              const Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(width: 3),
               if (_privateUnreadTotal() > 0)
                 _BlinkingUnread(label: const Text(''), count: _privateUnreadTotal(), color: _nickColor(_privateRooms().first.name)),
               PopupMenuButton<String>(
                 tooltip: 'Privados',
-                icon: const Icon(Icons.arrow_drop_down, size: 22),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Text('PRIVADOS', style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 2),
+                  const Icon(Icons.arrow_drop_down, size: 22),
+                ]),
                 onSelected: _openPrivateRoom,
                 itemBuilder: (_) {
                   final privates = _privateRooms();
@@ -332,8 +335,8 @@ class _HomeScreenState extends State<HomeScreen> {
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: Row(children: [
-                Icon(Icons.circle, size: 9, color: controller.connected ? const Color(0xFF8FB59B) : Colors.grey),
-                const SizedBox(width: 6),
+                Icon(Icons.circle, size: 16, color: controller.connected ? const Color(0xFF8FB59B) : Colors.grey),
+                const SizedBox(width: 2),
                 SizedBox(width: 150, child: Text(controller.status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
               ]),
             ),
