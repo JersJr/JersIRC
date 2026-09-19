@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, refactor/core-architecture ]
   workflow_dispatch:
 
 permissions:
@@ -24,14 +24,106 @@ jobs:
       - name: Generate Android platform
         run: flutter create --platforms=android --project-name jersirc .
 
+      - name: Configure Android foreground service
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('android/app/src/main/AndroidManifest.xml')
+          text = path.read_text(encoding='utf-8')
+          marker = '    <application'
+          permissions = (
+              '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n'
+              '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />\n'
+              '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n'
+          )
+          if 'android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING' not in text:
+              text = text.replace(marker, permissions + marker, 1)
+          service_marker = '    </application>'
+          service = (
+              '    <service\n'
+              '        android:name="com.pravera.flutter_foreground_task.service.ForegroundService"\n'
+              '        android:foregroundServiceType="remoteMessaging"\n'
+              '        android:exported="false" />\n'
+          )
+          if 'com.pravera.flutter_foreground_task.service.ForegroundService' not in text:
+              if service_marker not in text:
+                  raise SystemExit('Android manifest application marker not found')
+              text = text.replace(service_marker, service + service_marker, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Enable Android internet permission
         run: sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
+
+      - name: Apply safe UI and nickname patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('lib/screens/home_screen.dart')
+          text = path.read_text(encoding='utf-8')
+
+          # Keep the source behavior from the known working branch and only
+          # change the initial nickname to a generated LC-#### / CFS-####.
+          import_line = "import '../nickname_generator.dart';\n"
+          anchor = "import '../controllers/irc_controller.dart';\n"
+          if import_line not in text:
+              if text.count(anchor) != 1:
+                  raise SystemExit('Nickname patch failed: import anchor not found')
+              text = text.replace(anchor, anchor + import_line, 1)
+
+          old_nick = "  final nick = TextEditingController(text: 'JersIRC_User');"
+          new_nick = "  final nick = TextEditingController(text: NicknameGenerator.generate());"
+          if text.count(old_nick) == 1:
+              text = text.replace(old_nick, new_nick, 1)
+          elif new_nick not in text:
+              raise SystemExit('Nickname patch failed: default nickname line not found')
+
+          # Preserve all existing UI patches already applied by this workflow.
+          text = text.replace("                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname')),\n", "                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname'))),\n", 1)
+
+          text, n = re.subn(r"\n\s*privateVisible \? _privateSidebar\(\) : _collapsedPrivateSidebar\(\),", "", text, count=1)
+          if n != 1:
+              raise SystemExit('UI patch failed: private sidebar line not found')
+
+          marker = "                      if (r.unread > 0) ...[const SizedBox(width: 8), _BlinkingUnread(label: const Text(''), count: r.unread, color: _nickColor(r.name))],\n"
+          addition = marker + "                      IconButton(tooltip: 'Cerrar privado', icon: const Icon(Icons.close, size: 17), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 30, minHeight: 30), onPressed: () => _closeRoom(r.name)),\n"
+          if text.count(marker) != 1:
+              raise SystemExit('UI patch failed: private dropdown marker not found')
+          text = text.replace(marker, addition, 1)
+
+          marker = "  Widget _chat(ChatRoomModel r) => Column(children: [\n    if (!controller.connected)\n"
+          header = "  Widget _chat(ChatRoomModel r) => Column(children: [\n    if (r.privateChat)\n      Container(\n        width: double.infinity,\n        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),\n        decoration: const BoxDecoration(color: Color(0xFF202832), border: Border(bottom: BorderSide(color: Colors.white10))),\n        child: Row(children: [\n          Icon(Icons.person_outline, size: 18, color: _nickColor(r.name)),\n          const SizedBox(width: 8),\n          const Text('Chat privado con ', style: TextStyle(color: Colors.white70, fontSize: 13)),\n          Expanded(child: Text(r.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(r.name), fontSize: 13, fontWeight: FontWeight.w700))),\n        ]),\n      ),\n    if (!controller.connected)\n"
+          if text.count(marker) != 1:
+              raise SystemExit('UI patch failed: _chat insertion point not found')
+          text = text.replace(marker, header, 1)
+
+          marker = "                  Expanded(child: room == null ? _welcome() : _chat(room!)),\n"
+          swipe = "                  Expanded(\n                    child: room == null\n                        ? _welcome()\n                        : (room!.privateChat\n                            ? Dismissible(\n                                key: ValueKey('private-' + room!.name),\n                                direction: DismissDirection.endToStart,\n                                secondaryBackground: Container(\n                                  alignment: Alignment.centerRight,\n                                  padding: const EdgeInsets.symmetric(horizontal: 24),\n                                  color: Colors.redAccent.withOpacity(.18),\n                                  child: const Icon(Icons.delete_outline, color: Colors.redAccent),\n                                ),\n                                onDismissed: (_) => _closeRoom(room!.name),\n                                child: _chat(room!),\n                              )\n                            : _chat(room!)),\n                  ),\n"
+          if text.count(marker) != 1:
+              raise SystemExit('UI patch failed: chat insertion point not found')
+          text = text.replace(marker, swipe, 1)
+
+          # Responsive AppBar: keep the left controls together while giving the
+          # connection status a fixed, right-aligned area on narrow phones.
+          text = text.replace('            mainAxisSize: MainAxisSize.min,\n', '            mainAxisSize: MainAxisSize.max,\n', 1)
+          old_status = "                SizedBox(width: 150, child: Text(controller.status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),\n"
+          new_status = "                SizedBox(width: MediaQuery.sizeOf(context).width < 400 ? 105 : 150, child: Text(controller.status, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),\n"
+          if text.count(old_status) == 1:
+              text = text.replace(old_status, new_status, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
 
       - name: Get dependencies
         run: flutter pub get
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Test
+        run: flutter test
 
       - name: Build APK
         run: flutter build apk --release
