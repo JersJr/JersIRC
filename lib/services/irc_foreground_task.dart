@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+import '../models/irc_message.dart';
 import '../services/irc_parser.dart';
 
 @pragma('vm:entry-point')
