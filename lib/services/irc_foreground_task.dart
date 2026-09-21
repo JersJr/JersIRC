@@ -23,6 +23,7 @@ class IrcForegroundTaskHandler extends TaskHandler {
   String? _nickname;
   bool _secure = false;
   Timer? _reconnectTimer;
+  bool _permanentConnectionFailure = false;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -52,6 +53,7 @@ class IrcForegroundTaskHandler extends TaskHandler {
         _nickname = data['nickname']?.toString().trim();
         _secure = data['secure'] == true;
         _manualDisconnect = false;
+        _permanentConnectionFailure = false;
         _reconnectTimer?.cancel();
         _connect();
         break;
@@ -126,6 +128,10 @@ class IrcForegroundTaskHandler extends TaskHandler {
   void _handleLine(String line) {
     final message = _parser.parse(line);
     if (message.command == 'PING') _sendRaw('PONG :${message.trailing}');
+    if (_isBanMessage(message)) {
+      _permanentConnectionFailure = true;
+      FlutterForegroundTask.sendDataToMain(<String, dynamic>{'type': 'banned'});
+    }
     FlutterForegroundTask.sendDataToMain(<String, dynamic>{
       'type': 'irc',
       'raw': line,
@@ -165,7 +171,14 @@ class IrcForegroundTaskHandler extends TaskHandler {
     FlutterForegroundTask.sendDataToMain(<String, dynamic>{
       'type': 'disconnected',
     });
-    if (!_manualDisconnect) _scheduleReconnect();
+    if (!_manualDisconnect && !_permanentConnectionFailure) _scheduleReconnect();
+  }
+
+  bool _isBanMessage(IrcMessage message) {
+    if (message.command == '465') return true;
+    if (message.command != 'ERROR' && message.command != 'NOTICE') return false;
+    final text = '${message.trailing} ${message.params.join(' ')}'.toLowerCase();
+    return text.contains('banned') || text.contains('ban') || text.contains('k-line') || text.contains('kline') || text.contains('g-line') || text.contains('gline') || text.contains('z-line') || text.contains('zline') || text.contains('akill');
   }
 
   void _emitError(String error) {

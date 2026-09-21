@@ -71,6 +71,15 @@ class IrcController extends ChangeNotifier {
   void toggleIgnore(String nickname) { final n = nickname.trim().toLowerCase(); if (n.isEmpty) return; if (!ignoredUsers.add(n)) ignoredUsers.remove(n); notifyListeners(); }
 
   void handleMessage(IrcMessage message) {
+    if (message.command == 'BANNED') {
+      connected = false;
+      connecting = false;
+      permanentConnectionFailure = true;
+      _reconnectTimer?.cancel();
+      status = 'Estás baneado';
+      notifyListeners();
+      return;
+    }
     if (message.command == 'DISCONNECTED') { connected = false; connecting = false; if (!manualDisconnect && !permanentConnectionFailure) { status = 'Conexión perdida'; notifyListeners(); _scheduleReconnectIfAllowed(); } else { notifyListeners(); } return; }
     if (message.command == 'ERROR') { connected = false; connecting = false; status = message.trailing.isEmpty ? 'Error de conexión' : 'Error: ${message.trailing}'; notifyListeners(); _scheduleReconnectIfAllowed(); return; }
     if (message.command == '001') { connected = true; connecting = false; status = 'Conectado'; _reconnectTimer?.cancel(); }

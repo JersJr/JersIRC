@@ -79,6 +79,11 @@ class IrcClient {
       _messages.add(message);
       return;
     }
+    if (data['type'] == 'banned') {
+      _connected = false;
+      _messages.add(const IrcMessage('', null, 'BANNED', []));
+      return;
+    }
     if (data['type'] == 'disconnected') {
       _connected = false;
       if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
