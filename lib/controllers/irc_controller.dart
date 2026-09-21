@@ -43,7 +43,7 @@ class IrcController extends ChangeNotifier {
     _reconnectTimer?.cancel(); status = 'Conexión perdida. Reintentando en 5 s...'; notifyListeners();
     _reconnectTimer = Timer(const Duration(seconds: 5), () => connect(host: _lastHost!, port: _lastPort!, nickname: _lastNickname!, secure: _lastSecure, automatic: true));
   }
-  bool _isPermanentConnectionError(String value) { final x = value.toLowerCase(); return x.contains('nickname en uso') || x.contains('nickname en conflicto') || x.contains('nickname/recurso no disponible') || x.contains('nickname no válido') || x.contains('contraseña incorrecta') || x.contains('rechazada/bloqueada') || x.contains('baneado') || x.contains('banned') || x.contains('clones') || x.contains('clone'); }
+  bool _isPermanentConnectionError(String value) { final x = value.toLowerCase(); return x.contains('nickname en uso') || x.contains('nickname en conflicto') || x.contains('nickname/recurso no disponible') || x.contains('nickname no válido') || x.contains('contraseña incorrecta') || x.contains('rechazada/bloqueada') || x.contains('baneado') || x.contains('banned') || x.contains('clones') || x.contains('clone') || x.contains('too many connections') || x.contains('k-line') || x.contains('g-line') || x.contains('z-line') || x.contains('akill'); }
   void scheduleReconnect({required String host, required int port, required String nickname, required bool secure}) { _lastHost = host.trim(); _lastPort = port; _lastNickname = nickname.trim(); _lastSecure = secure; _scheduleReconnectIfAllowed(); }
 
   Future<void> disconnect() async { manualDisconnect = true; _reconnectTimer?.cancel(); await client.disconnect(); connected = false; connecting = false; status = 'Desconectado'; notifyListeners(); }
@@ -74,6 +74,11 @@ class IrcController extends ChangeNotifier {
   void toggleIgnore(String nickname) { final n = nickname.trim().toLowerCase(); if (n.isEmpty) return; if (!ignoredUsers.add(n)) ignoredUsers.remove(n); notifyListeners(); }
   void clearBanNotice() { banNotice = null; banChannel = null; banIsServer = true; }
 
+  bool _looksLikeAccessBan(String text) {
+    final x = text.toLowerCase();
+    return x.contains('banned') || x.contains('baneado') || x.contains('ban from') || x.contains('k-line') || x.contains('kline') || x.contains('g-line') || x.contains('gline') || x.contains('z-line') || x.contains('zline') || x.contains('akill') || x.contains('clone') || x.contains('clon') || x.contains('too many connections') || x.contains('too many clients') || x.contains('connections from your host') || x.contains('more than 3') || x.contains('session limit');
+  }
+
   void handleMessage(IrcMessage message) {
     if (message.command == 'BANNED') {
       connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel();
@@ -81,13 +86,13 @@ class IrcController extends ChangeNotifier {
       status = 'Estás baneado del servidor'; notifyListeners(); return;
     }
     if (message.command == 'DISCONNECTED') { connected = false; connecting = false; if (!manualDisconnect && !permanentConnectionFailure) { status = 'Conexión perdida'; notifyListeners(); _scheduleReconnectIfAllowed(); } else { notifyListeners(); } return; }
-    if (message.command == 'ERROR') {
-      final text = message.trailing.isEmpty ? 'Error de conexión' : message.trailing;
-      final lower = text.toLowerCase();
-      if (lower.contains('banned') || lower.contains('baneado') || lower.contains('clon') || lower.contains('k-line') || lower.contains('g-line') || lower.contains('z-line') || lower.contains('akill')) {
-        connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel(); banNotice = text; banIsServer = true; banChannel = null; status = 'Estás baneado del servidor'; notifyListeners(); return;
+    if (message.command == 'ERROR' || message.command == 'NOTICE') {
+      final text = message.trailing.isEmpty ? message.params.join(' ') : message.trailing;
+      if (_looksLikeAccessBan(text)) {
+        connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel();
+        banNotice = text.isEmpty ? 'El servidor rechazó la conexión.' : text; banIsServer = true; banChannel = null; status = 'Estás baneado del servidor'; notifyListeners(); return;
       }
-      connected = false; connecting = false; status = 'Error: $text'; notifyListeners(); _scheduleReconnectIfAllowed(); return;
+      if (message.command == 'ERROR') { connected = false; connecting = false; status = text.isEmpty ? 'Error de conexión' : 'Error: $text'; notifyListeners(); _scheduleReconnectIfAllowed(); return; }
     }
     if (message.command == '001') { connected = true; connecting = false; status = 'Conectado'; _reconnectTimer?.cancel(); }
     final numeric = int.tryParse(message.command);
@@ -97,9 +102,7 @@ class IrcController extends ChangeNotifier {
         connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel(); banNotice = message.trailing.isEmpty ? 'Tu conexión ha sido bloqueada por el servidor.' : message.trailing; banIsServer = true; banChannel = null;
       } else if (numeric == 474) {
         final channel = message.params.length >= 2 ? message.params[1] : (message.params.isNotEmpty ? message.params.last : 'la sala');
-        banNotice = message.trailing.isEmpty ? 'No puedes entrar a esta sala.' : message.trailing; banIsServer = false; banChannel = channel;
-      } else if (numeric == 485 && message.trailing.toLowerCase().contains('ban')) {
-        connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel(); banNotice = message.trailing; banIsServer = true; banChannel = null;
+        banNotice = message.trailing.isEmpty ? 'No puedes entrar a esta sala.' : message.trailing; banIsServer = false; banChannel = channel; status = 'Estás baneado de $channel';
       } else if ({431, 432, 433, 436, 437, 451, 464}.contains(numeric)) {
         connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel();
       }
