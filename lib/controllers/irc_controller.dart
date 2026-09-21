@@ -19,13 +19,16 @@ class IrcController extends ChangeNotifier {
   bool _lastSecure = true;
   String? activeRoom;
   String status = 'Desconectado';
+  String? banNotice;
+  String? banChannel;
+  bool banIsServer = true;
   bool connected = false, connecting = false, manualDisconnect = false, permanentConnectionFailure = false;
   ChatRoomModel? get currentRoom => activeRoom == null ? null : rooms[activeRoom];
 
   Future<void> connect({required String host, required int port, required String nickname, bool secure = false, bool automatic = false}) async {
     if (connecting || connected) return;
     _lastHost = host.trim(); _lastPort = port; _lastNickname = nickname.trim(); _lastSecure = secure;
-    _reconnectTimer?.cancel(); manualDisconnect = false; permanentConnectionFailure = false; connecting = true; connected = false;
+    _reconnectTimer?.cancel(); manualDisconnect = false; permanentConnectionFailure = false; banNotice = null; banChannel = null; banIsServer = true; connecting = true; connected = false;
     status = automatic ? 'Reconectando...' : 'Conectando...'; notifyListeners();
     try {
       await client.connect(host: _lastHost!, port: port, nickname: _lastNickname!, secure: secure);
@@ -40,7 +43,7 @@ class IrcController extends ChangeNotifier {
     _reconnectTimer?.cancel(); status = 'Conexión perdida. Reintentando en 5 s...'; notifyListeners();
     _reconnectTimer = Timer(const Duration(seconds: 5), () => connect(host: _lastHost!, port: _lastPort!, nickname: _lastNickname!, secure: _lastSecure, automatic: true));
   }
-  bool _isPermanentConnectionError(String value) { final x = value.toLowerCase(); return x.contains('nickname en uso') || x.contains('nickname en conflicto') || x.contains('nickname/recurso no disponible') || x.contains('nickname no válido') || x.contains('contraseña incorrecta') || x.contains('rechazada/bloqueada'); }
+  bool _isPermanentConnectionError(String value) { final x = value.toLowerCase(); return x.contains('nickname en uso') || x.contains('nickname en conflicto') || x.contains('nickname/recurso no disponible') || x.contains('nickname no válido') || x.contains('contraseña incorrecta') || x.contains('rechazada/bloqueada') || x.contains('baneado') || x.contains('banned') || x.contains('clones') || x.contains('clone'); }
   void scheduleReconnect({required String host, required int port, required String nickname, required bool secure}) { _lastHost = host.trim(); _lastPort = port; _lastNickname = nickname.trim(); _lastSecure = secure; _scheduleReconnectIfAllowed(); }
 
   Future<void> disconnect() async { manualDisconnect = true; _reconnectTimer?.cancel(); await client.disconnect(); connected = false; connecting = false; status = 'Desconectado'; notifyListeners(); }
@@ -69,22 +72,38 @@ class IrcController extends ChangeNotifier {
   void sendNotice(String target, String text) { if (connected && target.trim().isNotEmpty && text.trim().isNotEmpty) client.notice(target.trim(), text.trim()); }
   void sendAction(String target, String text) { if (connected && target.trim().isNotEmpty && text.trim().isNotEmpty) client.message(target.trim(), '\u0001ACTION ${text.trim()}\u0001'); }
   void toggleIgnore(String nickname) { final n = nickname.trim().toLowerCase(); if (n.isEmpty) return; if (!ignoredUsers.add(n)) ignoredUsers.remove(n); notifyListeners(); }
+  void clearBanNotice() { banNotice = null; banChannel = null; banIsServer = true; }
 
   void handleMessage(IrcMessage message) {
     if (message.command == 'BANNED') {
-      connected = false;
-      connecting = false;
-      permanentConnectionFailure = true;
-      _reconnectTimer?.cancel();
-      status = 'Estás baneado';
-      notifyListeners();
-      return;
+      connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel();
+      banNotice = message.trailing.isEmpty ? 'Tu conexión ha sido bloqueada por el servidor.' : message.trailing; banIsServer = true; banChannel = null;
+      status = 'Estás baneado del servidor'; notifyListeners(); return;
     }
     if (message.command == 'DISCONNECTED') { connected = false; connecting = false; if (!manualDisconnect && !permanentConnectionFailure) { status = 'Conexión perdida'; notifyListeners(); _scheduleReconnectIfAllowed(); } else { notifyListeners(); } return; }
-    if (message.command == 'ERROR') { connected = false; connecting = false; status = message.trailing.isEmpty ? 'Error de conexión' : 'Error: ${message.trailing}'; notifyListeners(); _scheduleReconnectIfAllowed(); return; }
+    if (message.command == 'ERROR') {
+      final text = message.trailing.isEmpty ? 'Error de conexión' : message.trailing;
+      final lower = text.toLowerCase();
+      if (lower.contains('banned') || lower.contains('baneado') || lower.contains('clon') || lower.contains('k-line') || lower.contains('g-line') || lower.contains('z-line') || lower.contains('akill')) {
+        connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel(); banNotice = text; banIsServer = true; banChannel = null; status = 'Estás baneado del servidor'; notifyListeners(); return;
+      }
+      connected = false; connecting = false; status = 'Error: $text'; notifyListeners(); _scheduleReconnectIfAllowed(); return;
+    }
     if (message.command == '001') { connected = true; connecting = false; status = 'Conectado'; _reconnectTimer?.cancel(); }
     final numeric = int.tryParse(message.command);
-    if (numeric != null && numeric >= 400 && numeric != 422) { status = friendlyError(message); if ({431, 432, 433, 436, 437, 451, 464, 465}.contains(numeric)) { connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel(); } }
+    if (numeric != null && numeric >= 400 && numeric != 422) {
+      status = friendlyError(message);
+      if (numeric == 465) {
+        connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel(); banNotice = message.trailing.isEmpty ? 'Tu conexión ha sido bloqueada por el servidor.' : message.trailing; banIsServer = true; banChannel = null;
+      } else if (numeric == 474) {
+        final channel = message.params.length >= 2 ? message.params[1] : (message.params.isNotEmpty ? message.params.last : 'la sala');
+        banNotice = message.trailing.isEmpty ? 'No puedes entrar a esta sala.' : message.trailing; banIsServer = false; banChannel = channel;
+      } else if (numeric == 485 && message.trailing.toLowerCase().contains('ban')) {
+        connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel(); banNotice = message.trailing; banIsServer = true; banChannel = null;
+      } else if ({431, 432, 433, 436, 437, 451, 464}.contains(numeric)) {
+        connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel();
+      }
+    }
     final sender = message.nick;
     if (message.command == 'JOIN' && message.params.isNotEmpty && sender != null) { final channel = message.params.last; final room = rooms.putIfAbsent(channel, () => ChatRoomModel(channel)); room.addUser(sender); if (_sameNick(sender, _lastNickname)) { activeRoom ??= channel; room.unread = 0; } }
     if (message.command == 'PART' && message.params.isNotEmpty && sender != null) { final channel = message.params.first; rooms[channel]?.removeUser(sender); if (_sameNick(sender, _lastNickname)) { rooms.remove(channel); if (activeRoom == channel) activeRoom = rooms.isEmpty ? null : rooms.keys.first; } }
@@ -121,6 +140,6 @@ class IrcController extends ChangeNotifier {
     for (final mode in message.params[1].split('')) { if (mode == '+') { adding = true; continue; } if (mode == '-') { adding = false; continue; } if (!modesWithArgument.contains(mode)) continue; if (arg >= message.params.length) break; final value = message.params[arg++]; final prefix = modeMap[mode]; if (prefix == null) continue; var prefixes = room.users[value]?.prefixes ?? ''; if (adding && !prefixes.contains(prefix)) prefixes += prefix; if (!adding) prefixes = prefixes.replaceAll(prefix, ''); room.setUserPrefixes(value, prefixes); }
   }
 
-  String friendlyError(IrcMessage message) { switch (message.command) { case '431': return 'Falta nickname'; case '432': return 'Nickname no válido: ${message.trailing}'; case '433': return 'Nickname en uso: ${message.trailing}'; case '436': return 'Nickname en conflicto: ${message.trailing}'; case '437': return 'Nickname/recurso no disponible: ${message.trailing}'; case '451': return 'El servidor aún no considera registrada la conexión'; case '464': return 'Contraseña incorrecta o requerida'; case '465': return 'Conexión rechazada/bloqueada: ${message.trailing}'; case '422': return 'Sin MOTD'; default: return 'IRC ${message.command}: ${message.trailing}'; } }
+  String friendlyError(IrcMessage message) { switch (message.command) { case '431': return 'Falta nickname'; case '432': return 'Nickname no válido: ${message.trailing}'; case '433': return 'Nickname en uso: ${message.trailing}'; case '436': return 'Nickname en conflicto: ${message.trailing}'; case '437': return 'Nickname/recurso no disponible: ${message.trailing}'; case '451': return 'El servidor aún no considera registrada la conexión'; case '464': return 'Contraseña incorrecta o requerida'; case '465': return 'Estás baneado del servidor: ${message.trailing}'; case '474': return 'Estás baneado de ${message.params.length >= 2 ? message.params[1] : 'la sala'}: ${message.trailing}'; case '422': return 'Sin MOTD'; default: return 'IRC ${message.command}: ${message.trailing}'; } }
   @override void dispose() { _reconnectTimer?.cancel(); _subscription?.cancel(); client.dispose(); super.dispose(); }
 }
