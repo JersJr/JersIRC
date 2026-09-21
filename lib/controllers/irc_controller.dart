@@ -19,13 +19,13 @@ class IrcController extends ChangeNotifier {
   bool _lastSecure = true;
   String? activeRoom;
   String status = 'Desconectado';
-  bool connected = false, connecting = false, manualDisconnect = false;
+  bool connected = false, connecting = false, manualDisconnect = false, permanentConnectionFailure = false;
   ChatRoomModel? get currentRoom => activeRoom == null ? null : rooms[activeRoom];
 
   Future<void> connect({required String host, required int port, required String nickname, bool secure = false, bool automatic = false}) async {
     if (connecting || connected) return;
     _lastHost = host.trim(); _lastPort = port; _lastNickname = nickname.trim(); _lastSecure = secure;
-    _reconnectTimer?.cancel(); manualDisconnect = false; connecting = true; connected = false;
+    _reconnectTimer?.cancel(); manualDisconnect = false; permanentConnectionFailure = false; connecting = true; connected = false;
     status = automatic ? 'Reconectando...' : 'Conectando...'; notifyListeners();
     try {
       await client.connect(host: _lastHost!, port: port, nickname: _lastNickname!, secure: secure);
@@ -71,11 +71,11 @@ class IrcController extends ChangeNotifier {
   void toggleIgnore(String nickname) { final n = nickname.trim().toLowerCase(); if (n.isEmpty) return; if (!ignoredUsers.add(n)) ignoredUsers.remove(n); notifyListeners(); }
 
   void handleMessage(IrcMessage message) {
-    if (message.command == 'DISCONNECTED') { connected = false; connecting = false; if (!manualDisconnect) { status = 'Conexión perdida'; notifyListeners(); _scheduleReconnectIfAllowed(); } else { notifyListeners(); } return; }
+    if (message.command == 'DISCONNECTED') { connected = false; connecting = false; if (!manualDisconnect && !permanentConnectionFailure) { status = 'Conexión perdida'; notifyListeners(); _scheduleReconnectIfAllowed(); } else { notifyListeners(); } return; }
     if (message.command == 'ERROR') { connected = false; connecting = false; status = message.trailing.isEmpty ? 'Error de conexión' : 'Error: ${message.trailing}'; notifyListeners(); _scheduleReconnectIfAllowed(); return; }
     if (message.command == '001') { connected = true; connecting = false; status = 'Conectado'; _reconnectTimer?.cancel(); }
     final numeric = int.tryParse(message.command);
-    if (numeric != null && numeric >= 400 && numeric != 422) { status = friendlyError(message); if ({431, 432, 433, 436, 437, 451, 464, 465}.contains(numeric)) { connected = false; connecting = false; _reconnectTimer?.cancel(); } }
+    if (numeric != null && numeric >= 400 && numeric != 422) { status = friendlyError(message); if ({431, 432, 433, 436, 437, 451, 464, 465}.contains(numeric)) { connected = false; connecting = false; permanentConnectionFailure = true; _reconnectTimer?.cancel(); } }
     final sender = message.nick;
     if (message.command == 'JOIN' && message.params.isNotEmpty && sender != null) { final channel = message.params.last; final room = rooms.putIfAbsent(channel, () => ChatRoomModel(channel)); room.addUser(sender); if (_sameNick(sender, _lastNickname)) { activeRoom ??= channel; room.unread = 0; } }
     if (message.command == 'PART' && message.params.isNotEmpty && sender != null) { final channel = message.params.first; rooms[channel]?.removeUser(sender); if (_sameNick(sender, _lastNickname)) { rooms.remove(channel); if (activeRoom == channel) activeRoom = rooms.isEmpty ? null : rooms.keys.first; } }
