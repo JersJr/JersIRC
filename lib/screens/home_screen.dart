@@ -36,7 +36,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void _refresh() {
     if (!mounted) return;
     setState(() {});
-    if (!controller.connected && _isBanError(controller.status) && !banDialogOpen) {\n      WidgetsBinding.instance.addPostFrameCallback((_) {\n        if (mounted && !controller.connected && !banDialogOpen && _isBanError(controller.status)) {\n          _showBanError();\n        }\n      });\n    }\n    if (!controller.connected && _isNicknameError(controller.status) && !nicknameDialogOpen) {
+    if (!controller.connected && _isBanError(controller.status) && !banDialogOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !controller.connected && !banDialogOpen && _isBanError(controller.status)) {
+          _showBanError();
+        }
+      });
+    }
+    if (!controller.connected && _isNicknameError(controller.status) && !nicknameDialogOpen) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !controller.connected && !nicknameDialogOpen && _isNicknameError(controller.status)) {
           _showNicknameError();
@@ -139,7 +146,39 @@ class _HomeScreenState extends State<HomeScreen> {
         x.contains('contraseña incorrecta o requerida');
   }
 
-  bool _isBanError(String value) {\n    final x = value.toLowerCase();\n    return x.contains('rechazada/bloqueada') || x.contains('baneado') || x.contains('banned');\n  }\n\n  Future<void> _showBanError() async {\n    if (banDialogOpen || !mounted) return;\n    banDialogOpen = true;\n    await showDialog<void>(\n      context: context,\n      barrierDismissible: false,\n      builder: (_) => AlertDialog(\n        title: const Text('Estás baneado'),\n        content: const Column(\n          mainAxisSize: MainAxisSize.min,\n          crossAxisAlignment: CrossAxisAlignment.start,\n          children: [\n            Text('Tu conexión ha sido bloqueada por el servidor.'),\n            SizedBox(height: 14),\n            Text('Si deseas dejar de estar baneado mira este tutorial:'),\n            SizedBox(height: 6),\n            SelectableText('https://youtube.com'),\n          ],\n        ),\n        actions: [\n          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),\n        ],\n      ),\n    );\n    banDialogOpen = false;\n  }\n\n  Future<void> _showNicknameError() async {
+  bool _isBanError(String value) {
+    final x = value.toLowerCase();
+    return x.contains('rechazada/bloqueada') || x.contains('baneado') || x.contains('banned');
+  }
+
+  Future<void> _showBanError() async {
+    if (banDialogOpen || !mounted) return;
+    banDialogOpen = true;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('Estás baneado'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Tu conexión ha sido bloqueada por el servidor.'),
+            SizedBox(height: 14),
+            Text('Si deseas dejar de estar baneado mira este tutorial:'),
+            SizedBox(height: 6),
+            SelectableText('https://youtube.com'),
+          ],
+        ),
+        actions: [
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+        ],
+      ),
+    );
+    banDialogOpen = false;
+  }
+
+  Future<void> _showNicknameError() async {
     if (nicknameDialogOpen || !mounted) return;
     nicknameDialogOpen = true;
     final result = await showDialog<bool>(
