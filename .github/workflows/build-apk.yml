@@ -79,7 +79,8 @@ jobs:
           # These are legacy UI patches. They are optional now: if the current
           # source already contains the changes, leave it untouched instead of
           # failing the entire build because an old marker is absent.
-          text = text.replace("                privateVisible ? _privateSidebar() : _collapsedPrivateSidebar(),", "", 1)
+          # No modificar ni eliminar la sección de privados aquí. La interfaz actual
+          # ya contiene el comportamiento correcto y debe preservarse tal cual.
 
           marker = "                      if (r.unread > 0) ...[const SizedBox(width: 8), _BlinkingUnread(label: const Text(''), count: r.unread, color: _nickColor(r.name))],\n"
           addition = marker + "                      IconButton(tooltip: 'Cerrar privado', icon: const Icon(Icons.close, size: 17), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 30, minHeight: 30), onPressed: () => _closeRoom(r.name)),\n"
