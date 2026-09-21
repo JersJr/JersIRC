@@ -21,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final message = TextEditingController();
   final messageFocus = FocusNode();
   final scroll = ScrollController();
-  bool secure = false, usersVisible = true, privateVisible = true, nicknameDialogOpen = false, banDialogOpen = false;
+  bool secure = false, usersVisible = true, privateVisible = false, nicknameDialogOpen = false, banDialogOpen = false;
   List<SavedServer> savedServers = [];
   String? selectedProfile;
   ChatRoomModel? get room => controller.currentRoom;
@@ -390,7 +390,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   Expanded(child: room == null ? _welcome() : _chat(room!)),
                   if (room != null && !room!.privateChat) ...[
                     usersVisible ? _users(room!) : _collapsedUsers(room!),
-                    privateVisible ? _privateSidebar() : _collapsedPrivateSidebar(),
                   ],
                 ],
               ),
