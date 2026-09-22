@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'screens/home_screen.dart';
+import 'services/irc_notifications.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   FlutterForegroundTask.initCommunicationPort();
   FlutterForegroundTask.init(
     androidNotificationOptions: AndroidNotificationOptions(
@@ -24,6 +26,7 @@ void main() {
       allowWifiLock: false,
     ),
   );
+  JersIrcNotifications.initialize();
   runApp(const JersIrcApp());
 }
 

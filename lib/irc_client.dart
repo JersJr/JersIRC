@@ -4,6 +4,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import 'models/irc_message.dart';
 import 'services/irc_foreground_task.dart';
+import 'services/irc_notifications.dart';
 import 'services/irc_parser.dart';
 
 export 'models/irc_message.dart';
@@ -66,6 +67,14 @@ class IrcClient {
 
   void _onTaskData(Object data) {
     if (data is! Map) return;
+    if (data['type'] == 'notification') {
+      final title = data['title']?.toString();
+      final body = data['body']?.toString();
+      if (title != null && title.isNotEmpty && body != null && body.isNotEmpty) {
+        JersIrcNotifications.show(title: title, body: body);
+      }
+      return;
+    }
     if (data['type'] == 'irc') {
       final raw = data['raw']?.toString();
       if (raw == null) return;
