@@ -24,6 +24,27 @@ jobs:
       - name: Generate Android platform
         run: flutter create --platforms=android --project-name jersirc .
 
+      - name: Configure Android core library desugaring
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('android/app/build.gradle.kts')
+          text = path.read_text(encoding='utf-8')
+          if 'isCoreLibraryDesugaringEnabled = true' not in text:
+              marker = 'android {\n'
+              if marker not in text:
+                  raise SystemExit('Android app android block not found')
+              text = text.replace(marker, marker + '    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n    }\n', 1)
+          if 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:' not in text:
+              marker = 'dependencies {\n'
+              dependency = '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+              if marker in text:
+                  text = text.replace(marker, marker + dependency, 1)
+              else:
+                  text += '\n\ndependencies {\n' + dependency + '}\n'
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Configure Android foreground service
         run: |
           python3 - <<'PY'
@@ -75,12 +96,6 @@ jobs:
               text = text.replace(old_nick, new_nick, 1)
 
           text = text.replace("                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname')),\n", "                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname'))),\n", 1)
-
-          # These are legacy UI patches. They are optional now: if the current
-          # source already contains the changes, leave it untouched instead of
-          # failing the entire build because an old marker is absent.
-          # No modificar ni eliminar la sección de privados aquí. La interfaz actual
-          # ya contiene el comportamiento correcto y debe preservarse tal cual.
 
           marker = "                      if (r.unread > 0) ...[const SizedBox(width: 8), _BlinkingUnread(label: const Text(''), count: r.unread, color: _nickColor(r.name))],\n"
           addition = marker + "                      IconButton(tooltip: 'Cerrar privado', icon: const Icon(Icons.close, size: 17), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 30, minHeight: 30), onPressed: () => _closeRoom(r.name)),\n"
