@@ -11,7 +11,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final controller = IrcController();
   final storage = JersStorage();
   final host = TextEditingController(text: 'irc.chateamos.org');
@@ -25,17 +25,23 @@ class _HomeScreenState extends State<HomeScreen> {
   List<SavedServer> savedServers = [];
   String? selectedProfile;
   ChatRoomModel? get room => controller.currentRoom;
+  String? _lastActiveRoom;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     controller.addListener(_refresh);
     _loadServers();
   }
 
   void _refresh() {
     if (!mounted) return;
+    final activeRoomName = controller.activeRoom;
+    final roomChanged = activeRoomName != _lastActiveRoom;
+    _lastActiveRoom = activeRoomName;
     setState(() {});
+    if (roomChanged) _scrollBottom();
     if (!banDialogOpen && controller.banNotice != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !banDialogOpen && controller.banNotice != null) _showBanError();
@@ -298,6 +304,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _scrollBottom();
+  }
+
   void _scrollBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (scroll.hasClients) scroll.animateTo(scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
@@ -327,6 +338,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     controller.removeListener(_refresh);
     controller.dispose();
     for (final c in [host, port, nick, channel, message, scroll]) c.dispose();
