@@ -80,13 +80,11 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.JERSIRC_KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.JERSIRC_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.JERSIRC_KEY_PASSWORD }}
           STORE_PASSWORD: ${{ secrets.JERSIRC_STORE_PASSWORD }}
         run: |
           set -euo pipefail
           test -n "$KEYSTORE_BASE64"
           test -n "$KEY_ALIAS"
-          test -n "$KEY_PASSWORD"
           test -n "$STORE_PASSWORD"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/jersirc-release.jks
           python3 - <<'PY'
@@ -111,7 +109,7 @@ jobs:
           signing = '''    signingConfigs {
               create("release") {
                   keyAlias = System.getenv("JERSIRC_KEY_ALIAS")
-                  keyPassword = System.getenv("JERSIRC_KEY_PASSWORD")
+                  keyPassword = System.getenv("JERSIRC_STORE_PASSWORD")
                   storeFile = rootProject.file("jersirc-release.jks")
                   storePassword = System.getenv("JERSIRC_STORE_PASSWORD")
               }
@@ -181,7 +179,6 @@ jobs:
       - name: Build APK
         env:
           JERSIRC_KEY_ALIAS: ${{ secrets.JERSIRC_KEY_ALIAS }}
-          JERSIRC_KEY_PASSWORD: ${{ secrets.JERSIRC_KEY_PASSWORD }}
           JERSIRC_STORE_PASSWORD: ${{ secrets.JERSIRC_STORE_PASSWORD }}
         run: flutter build apk --release
 
