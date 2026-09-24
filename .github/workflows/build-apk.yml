@@ -89,44 +89,37 @@ jobs:
           test -n "$KEY_PASSWORD"
           test -n "$STORE_PASSWORD"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/jersirc-release.jks
-          cat > android/key.properties <<EOF
-          storePassword=$STORE_PASSWORD
-          keyPassword=$KEY_PASSWORD
-          keyAlias=$KEY_ALIAS
-          storeFile=jersirc-release.jks
-          EOF
           python3 - <<'PY'
           from pathlib import Path
           path = Path('android/app/build.gradle.kts')
           text = path.read_text(encoding='utf-8')
-          if 'import java.util.Properties' not in text:
-              text = 'import java.io.FileInputStream\nimport java.util.Properties\n\n' + text
-          loader = '''val keystoreProperties = Properties()
-          val keystorePropertiesFile = rootProject.file("key.properties")
-          if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-          }
-
-          '''
-          if 'val keystoreProperties = Properties()' not in text:
-              text = text.replace('android {\n', loader + 'android {\n', 1)
+          if 'import java.util.Properties' in text:
+              text = text.replace('import java.io.FileInputStream\nimport java.util.Properties\n\n', '')
+          text = text.replace('import java.io.FileInputStream\n', '')
+          loader_start = text.find('val keystoreProperties = Properties()')
+          if loader_start >= 0:
+              loader_end = text.find('android {', loader_start)
+              if loader_end < 0:
+                  raise SystemExit('android block not found')
+              text = text[:loader_start] + text[loader_end:]
+          signing_start = text.find('    signingConfigs {')
+          if signing_start >= 0:
+              signing_end = text.find('    buildTypes {', signing_start)
+              if signing_end < 0:
+                  raise SystemExit('buildTypes block not found')
+              text = text[:signing_start] + text[signing_end:]
           signing = '''    signingConfigs {
               create("release") {
-                  keyAlias = keystoreProperties["keyAlias"] as String
-                  keyPassword = keystoreProperties["keyPassword"] as String
-                  storeFile = file(keystoreProperties["storeFile"] as String)
-                  storePassword = keystoreProperties["storePassword"] as String
+                  keyAlias = System.getenv("JERSIRC_KEY_ALIAS")
+                  keyPassword = System.getenv("JERSIRC_KEY_PASSWORD")
+                  storeFile = rootProject.file("jersirc-release.jks")
+                  storePassword = System.getenv("JERSIRC_STORE_PASSWORD")
               }
           }
           '''
-          if 'create("release")' not in text:
-              if '    buildTypes {\n' not in text:
-                  raise SystemExit('buildTypes block not found')
-              text = text.replace('    buildTypes {\n', signing + '    buildTypes {\n', 1)
+          text = text.replace('    buildTypes {\n', signing + '    buildTypes {\n', 1)
           text = text.replace('signingConfig = signingConfigs.getByName("debug")', 'signingConfig = signingConfigs.getByName("release")', 1)
           if 'signingConfig = signingConfigs.getByName("release")' not in text:
-              if '        release {\n' not in text:
-                  raise SystemExit('release buildType not found')
               text = text.replace('        release {\n', '        release {\n            signingConfig = signingConfigs.getByName("release")\n', 1)
           path.write_text(text, encoding='utf-8')
           PY
