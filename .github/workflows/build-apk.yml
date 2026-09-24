@@ -169,10 +169,6 @@ jobs:
           path.write_text(text, encoding='utf-8')
           PY
 
-      - name: Cleanup signing files
-        if: always()
-        run: rm -f android/jersirc-release.jks android/key.properties
-
       - name: Get dependencies
         run: flutter pub get
 
@@ -191,3 +187,7 @@ jobs:
           name: JersIRC-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+
+      - name: Cleanup signing files
+        if: always()
+        run: rm -f android/jersirc-release.jks android/key.properties
