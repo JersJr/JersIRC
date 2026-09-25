@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'screens/home_screen.dart';
 import 'services/irc_notifications.dart';
+import 'widgets/update_checker_overlay.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,6 +47,6 @@ class JersIrcApp extends StatelessWidget {
           ),
           scaffoldBackgroundColor: const Color(0xFF11161C),
         ),
-        home: const HomeScreen(),
+        home: const UpdateCheckerOverlay(child: HomeScreen()),
       );
 }
