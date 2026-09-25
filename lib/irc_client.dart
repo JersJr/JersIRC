@@ -1,56 +1,22 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
-class IrcMessage {
-  final String raw;
-  final String? prefix;
-  final String command;
-  final List<String> params;
-  const IrcMessage(this.raw, this.prefix, this.command, this.params);
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
-  String get trailing => params.isEmpty ? '' : params.last;
-  String? get nick => prefix?.split('!').first;
+import 'models/irc_message.dart';
+import 'services/irc_foreground_task.dart';
+import 'services/irc_notifications.dart';
+import 'services/irc_parser.dart';
 
-  static IrcMessage parse(String raw) {
-    var line = raw;
-    String? prefix;
-    if (line.startsWith(':')) {
-      final space = line.indexOf(' ');
-      if (space > 0) {
-        prefix = line.substring(1, space);
-        line = line.substring(space + 1);
-      }
-    }
-
-    final parts = <String>[];
-    while (line.isNotEmpty) {
-      line = line.trimLeft();
-      if (line.isEmpty) break;
-      if (line.startsWith(':')) {
-        parts.add(line.substring(1));
-        break;
-      }
-      final space = line.indexOf(' ');
-      if (space < 0) {
-        parts.add(line);
-        break;
-      }
-      parts.add(line.substring(0, space));
-      line = line.substring(space + 1);
-    }
-
-    final command = parts.isEmpty ? '' : parts.removeAt(0).toUpperCase();
-    return IrcMessage(raw, prefix, command, parts);
-  }
-}
+export 'models/irc_message.dart';
 
 class IrcClient {
-  Socket? _socket;
-  StreamSubscription<String>? _subscription;
   final _messages = StreamController<IrcMessage>.broadcast();
   Completer<void>? _readyCompleter;
   bool _connected = false;
+
+  IrcClient() {
+    FlutterForegroundTask.addTaskDataCallback(_onTaskData);
+  }
 
   Stream<IrcMessage> get messages => _messages.stream;
   bool get isConnected => _connected;
@@ -64,115 +30,122 @@ class IrcClient {
   }) async {
     await disconnect();
     _readyCompleter = Completer<void>();
+    _connected = false;
+
+    if (!await FlutterForegroundTask.isRunningService) {
+      await FlutterForegroundTask.startService(
+        serviceId: 2401,
+        serviceTypes: const [ForegroundServiceTypes.remoteMessaging],
+        notificationTitle: 'JersIRC conectado',
+        notificationText: 'Manteniendo la conexión IRC activa',
+        notificationInitialRoute: '/',
+        callback: startIrcForegroundTask,
+      );
+    }
+
+    FlutterForegroundTask.sendDataToTask(<String, dynamic>{
+      'command': 'connect',
+      'host': host,
+      'port': port,
+      'nickname': nickname,
+      'secure': secure,
+      'username': username ?? nickname,
+    });
 
     try {
-      final socket = secure
-          ? await SecureSocket.connect(host, port, timeout: const Duration(seconds: 15))
-          : await Socket.connect(host, port, timeout: const Duration(seconds: 15));
-
-      _socket = socket;
-      _connected = true;
-
-      // Algunos servidores IRC todavía envían bytes que no son UTF-8 válido
-      // durante el banner/NAMES. No debemos cerrar la conexión por eso.
-      _subscription = const Utf8Decoder(allowMalformed: true)
-          .bind(socket)
-          .transform(const LineSplitter())
-          .listen(_handleLine, onDone: () {
-            _connected = false;
-            if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
-              _readyCompleter!.completeError(
-                StateError('El servidor cerró la conexión antes de completar el registro IRC.'),
-              );
-            }
-            _messages.add(const IrcMessage('', null, 'DISCONNECTED', []));
-          }, onError: (Object e) {
-            _connected = false;
-            if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
-              _readyCompleter!.completeError(e);
-            }
-            _messages.add(IrcMessage(e.toString(), null, 'ERROR', [e.toString()]));
-          });
-
-      send('NICK $nickname');
-      send('USER ${username ?? nickname} 0 * :JersIRC Android Client');
-
       await _readyCompleter!.future.timeout(
         const Duration(seconds: 20),
-        onTimeout: () => throw TimeoutException('El servidor no respondió con 001 Welcome.'),
+        onTimeout: () => throw TimeoutException(
+          'El servidor no respondió con 001 Welcome.',
+        ),
       );
     } catch (_) {
-      await disconnect();
+      _connected = false;
       rethrow;
     }
   }
 
-  void _handleLine(String line) {
-    final m = IrcMessage.parse(line);
-
-    if (m.command == 'PING') {
-      send('PONG :${m.trailing}');
+  void _onTaskData(Object data) {
+    if (data is! Map) return;
+    if (data['type'] == 'notification') {
+      final title = data['title']?.toString();
+      final body = data['body']?.toString();
+      if (title != null && title.isNotEmpty && body != null && body.isNotEmpty) {
+        JersIrcNotifications.show(title: title, body: body);
+      }
+      return;
     }
-
-    if (_isRegistrationError(m.command) &&
-        _readyCompleter != null &&
-        !_readyCompleter!.isCompleted) {
-      _readyCompleter!.completeError(
-        StateError('IRC ${m.command}: ${m.trailing}'),
-      );
+    if (data['type'] == 'irc') {
+      final raw = data['raw']?.toString();
+      if (raw == null) return;
+      final message = const IrcParser().parse(raw);
+      if (message.command == '001') {
+        _connected = true;
+        if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
+          _readyCompleter!.complete();
+        }
+      }
+      _messages.add(message);
+      return;
     }
-
-    if (m.command == '001' && _readyCompleter != null && !_readyCompleter!.isCompleted) {
-      _readyCompleter!.complete();
+    if (data['type'] == 'banned') {
+      _connected = false;
+      _messages.add(const IrcMessage('', null, 'BANNED', []));
+      return;
     }
-
-    _messages.add(m);
+    if (data['type'] == 'disconnected') {
+      _connected = false;
+      if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
+        _readyCompleter!.completeError(
+          StateError('El servidor cerró la conexión antes de completar el registro IRC.'),
+        );
+      }
+      _messages.add(const IrcMessage('', null, 'DISCONNECTED', []));
+      return;
+    }
+    if (data['type'] == 'error') {
+      _connected = false;
+      final error = data['error']?.toString() ?? 'Error de conexión';
+      if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
+        _readyCompleter!.completeError(StateError(error));
+      }
+      _messages.add(IrcMessage(error, null, 'ERROR', [error]));
+    }
   }
 
-  bool _isRegistrationError(String command) {
-    return const {
-      '431',
-      '432',
-      '433',
-      '436',
-      '437',
-      '451',
-      '462',
-      '464',
-      '465',
-    }.contains(command);
+  void sendRaw(String command) {
+    FlutterForegroundTask.sendDataToTask(<String, dynamic>{
+      'command': 'send',
+      'raw': command,
+    });
   }
 
-  void send(String command) {
-    if (_connected && _socket != null) {
-      _socket!.write('$command\r\n');
-    }
-  }
-
-  void join(String channel) => send('JOIN $channel');
-  void part(String channel, [String? reason]) => send('PART $channel${reason == null ? '' : ' :$reason'}');
-  void changeNick(String nickname) => send('NICK $nickname');
-  void message(String target, String text) => send('PRIVMSG $target :$text');
-  void notice(String target, String text) => send('NOTICE $target :$text');
-  void quit([String reason = 'Leaving JersIRC']) => send('QUIT :$reason');
+  void send(String command) => sendRaw(command);
+  void join(String channel) => sendRaw('JOIN $channel');
+  void part(String channel, [String? reason]) =>
+      sendRaw('PART $channel${reason == null ? '' : ' :$reason'}');
+  void changeNick(String nickname) => sendRaw('NICK $nickname');
+  void message(String target, String text) =>
+      sendRaw('PRIVMSG $target :$text');
+  void notice(String target, String text) =>
+      sendRaw('NOTICE $target :$text');
+  void quit([String reason = 'Leaving JersIRC']) =>
+      sendRaw('QUIT :$reason');
 
   Future<void> disconnect() async {
-    final socket = _socket;
     _connected = false;
     _readyCompleter = null;
-    await _subscription?.cancel();
-    _subscription = null;
-    try {
-      socket?.write('QUIT :Leaving JersIRC\r\n');
-    } catch (_) {}
-    try {
-      await socket?.close();
-    } catch (_) {}
-    _socket = null;
+    if (await FlutterForegroundTask.isRunningService) {
+      FlutterForegroundTask.sendDataToTask(<String, dynamic>{
+        'command': 'disconnect',
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await FlutterForegroundTask.stopService();
+    }
   }
 
   Future<void> dispose() async {
-    await disconnect();
+    FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
     await _messages.close();
   }
 }
