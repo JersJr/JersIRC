@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, refactor/core-architecture ]
+    branches: [ main, refactor/core-architecture, jersirc2-clean ]
   workflow_dispatch:
 
 permissions:
