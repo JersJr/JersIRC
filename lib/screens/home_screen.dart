@@ -16,7 +16,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final storage = JersStorage();
   final host = TextEditingController(text: 'irc.chateamos.org');
   final port = TextEditingController(text: '6667');
-  final nick = TextEditingController(text: 'JersIRC_User');
+  final nick = TextEditingController();
   final channel = TextEditingController(text: '#panama');
   final message = TextEditingController();
   final messageFocus = FocusNode();
@@ -62,7 +62,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final list = await storage.loadServers();
     if (!mounted) return;
     setState(() => savedServers = list);
-    await _loadLastServer();
+    // La pantalla inicial usa siempre el acceso WebChat. Los perfiles se mantienen
+    // disponibles únicamente desde la configuración avanzada después de conectar.
   }
 
   Future<void> _loadLastServer() async {
@@ -348,51 +349,63 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF151B22),
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.forum_rounded, size: 22),
-              const SizedBox(width: 8),
-              PopupMenuButton<String>(
-                tooltip: 'Privados',
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Text('PRIVADOS', style: TextStyle(fontWeight: FontWeight.w700)),
-                  const SizedBox(width: 3),
-                  if (_privateUnreadTotal() > 0)
-                    _BlinkingUnread(label: const Text(''), count: _privateUnreadTotal(), color: _nickColor(_privateRooms().first.name)),
-                  const Icon(Icons.arrow_drop_down, size: 22),
-                ]),
-                onSelected: _openPrivateRoom,
-                itemBuilder: (_) {
-                  final privates = _privateRooms();
-                  if (privates.isEmpty) return const [PopupMenuItem<String>(enabled: false, child: Text('No hay privados abiertos'))];
-                  return privates.map((r) => PopupMenuItem<String>(
-                    value: r.name,
+        appBar: controller.connected
+            ? AppBar(
+                backgroundColor: const Color(0xFF151B22),
+                title: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.forum_rounded, size: 22),
+                    const SizedBox(width: 8),
+                    PopupMenuButton<String>(
+                      tooltip: 'Privados',
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Text('PRIVADOS', style: TextStyle(fontWeight: FontWeight.w700)),
+                        const SizedBox(width: 3),
+                        if (_privateUnreadTotal() > 0)
+                          _BlinkingUnread(label: const Text(''), count: _privateUnreadTotal(), color: _nickColor(_privateRooms().first.name)),
+                        const Icon(Icons.arrow_drop_down, size: 22),
+                      ]),
+                      onSelected: _openPrivateRoom,
+                      itemBuilder: (_) {
+                        final privates = _privateRooms();
+                        if (privates.isEmpty) return const [PopupMenuItem<String>(enabled: false, child: Text('No hay privados abiertos'))];
+                        return privates.map((r) => PopupMenuItem<String>(
+                          value: r.name,
+                          child: Row(children: [
+                            Icon(Icons.person_outline, size: 17, color: _nickColor(r.name)),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(r.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(r.name)))),
+                            if (r.unread > 0) ...[const SizedBox(width: 8), _BlinkingUnread(label: const Text(''), count: r.unread, color: _nickColor(r.name))],
+                          ]),
+                        )).toList();
+                      },
+                    ),
+                  ],
+                ),
+                actions: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
                     child: Row(children: [
-                      Icon(Icons.person_outline, size: 17, color: _nickColor(r.name)),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(r.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(r.name)))),
-                      if (r.unread > 0) ...[const SizedBox(width: 8), _BlinkingUnread(label: const Text(''), count: r.unread, color: _nickColor(r.name))],
+                      Icon(Icons.circle, size: 9, color: const Color(0xFF8FB59B)),
+                      const SizedBox(width: 6),
+                      SizedBox(width: 150, child: Text(controller.status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
                     ]),
-                  )).toList();
-                },
+                  ),
+                ],
+              )
+            : AppBar(
+                backgroundColor: const Color(0xFF151B22),
+                title: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.forum_rounded, size: 22),
+                    SizedBox(width: 8),
+                    Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
+                  ],
+                ),
               ),
-            ],
-          ),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Row(children: [
-                Icon(Icons.circle, size: 9, color: controller.connected ? const Color(0xFF8FB59B) : Colors.grey),
-                const SizedBox(width: 6),
-                SizedBox(width: 150, child: Text(controller.status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
-              ]),
-            ),
-          ],
-        ),
-        drawer: _drawer(),
+        drawer: controller.connected ? _drawer() : null,
         body: Column(
           children: [
             if (controller.rooms.isNotEmpty) _tabs(),
@@ -463,12 +476,68 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
 
-  Widget _welcome() => const Center(
-        child: Text(
-          'Escoja su Nick',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+  Widget _welcome() => Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.forum_rounded, size: 54),
+                const SizedBox(height: 18),
+                const Text(
+                  'Escoja su Nick',
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Elija cómo quiere aparecer en el chat',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white54),
+                ),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: nick,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _enterWebChat(),
+                  decoration: const InputDecoration(
+                    labelText: 'Nickname',
+                    hintText: 'Escriba su Nick',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: controller.connecting ? null : _enterWebChat,
+                    icon: const Icon(Icons.login_rounded),
+                    label: Text(controller.connecting ? 'Conectando...' : 'Entrar al chat'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
+
+  Future<void> _enterWebChat() async {
+    final value = nick.text.trim();
+    if (value.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Escriba un Nick para entrar al chat.')),
+      );
+      return;
+    }
+    host.text = 'irc.chateamos.org';
+    port.text = '6667';
+    channel.text = '#panama';
+    secure = false;
+    selectedProfile = null;
+    await _connect();
+  }
 
   Widget _tabs() => SizedBox(
         height: 46,
