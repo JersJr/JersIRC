@@ -463,16 +463,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
 
-  Widget _welcome() => Center(child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.forum_outlined, size: 62, color: Colors.white.withOpacity(.4)),
-          const SizedBox(height: 14),
-          const Text('Bienvenido a JersIRC', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          const Text('Conecta a un servidor IRC para comenzar', style: TextStyle(color: Colors.white54)),
-        ],
-      ));
+  Widget _welcome() => const Center(
+        child: Text(
+          'Escoja su Nick',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+        ),
+      );
 
   Widget _tabs() => SizedBox(
         height: 46,
