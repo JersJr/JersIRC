@@ -5,6 +5,6 @@ void main() {
   testWidgets('JersIRC opens', (tester) async {
     await tester.pumpWidget(const JersIrcApp());
     expect(find.text('PRIVADOS'), findsWidgets);
-    expect(find.text('Bienvenido a JersIRC'), findsOneWidget);
+    expect(find.text('Escoja su Nick'), findsOneWidget);
   });
 }
