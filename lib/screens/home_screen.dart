@@ -4,6 +4,7 @@ import '../models/chat_room.dart';
 import '../models.dart';
 import '../storage.dart';
 import '../widgets/user_action_sheet.dart';
+import '../services/country_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,6 +27,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? selectedProfile;
   ChatRoomModel? get room => controller.currentRoom;
   String? _lastActiveRoom;
+  DetectedCountry? _country;
+  List<IrcChannelInfo> _channelCatalog = const [];
+  bool _webChatEntry = false;
+  bool _catalogLoading = false;
 
   @override
   void initState() {
@@ -213,23 +218,220 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _connect() async {
+  Future<void> _connect({bool autoSelectCountryRoom = false}) async {
     final p = int.tryParse(port.text) ?? (secure ? 6697 : 6667);
     final h = host.text.trim();
     final n = nick.text.trim();
-    final ch = channel.text.trim();
+    var ch = channel.text.trim();
+
     await controller.connect(host: h, port: p, nickname: n, secure: secure);
     if (!controller.connected) {
       if (mounted && controller.banNotice != null) { await _showBanError(); return; }
       if (mounted && _isNicknameError(controller.status)) await _showNicknameError();
       return;
     }
+
+    if (autoSelectCountryRoom) {
+      _country ??= await CountryService.detect();
+      if (mounted) setState(() => _catalogLoading = true);
+      final catalog = await controller.listChannels();
+      if (!mounted) return;
+      setState(() {
+        _channelCatalog = catalog;
+        _catalogLoading = false;
+      });
+      final defaultRoom = _defaultCountryRoom(catalog, _country);
+      if (defaultRoom != null) {
+        ch = defaultRoom.channel;
+        channel.text = ch;
+      } else {
+        ch = '';
+        channel.clear();
+      }
+    }
+
     final profileName = selectedProfile?.trim().isNotEmpty == true ? selectedProfile! : h;
-    await storage.upsertServer(SavedServer(name: profileName, host: h, port: p, nickname: n, tls: secure, channels: ch.isEmpty ? const [] : [ch]));
+    await storage.upsertServer(SavedServer(
+      name: profileName,
+      host: h,
+      port: p,
+      nickname: n,
+      tls: secure,
+      channels: ch.isEmpty ? const [] : [ch],
+    ));
     await storage.setLastServer(profileName);
     final list = await storage.loadServers();
-    if (mounted) setState(() => savedServers = list);
-    if (ch.isNotEmpty) controller.join(ch);
+    if (mounted) setState(() {
+      savedServers = list;
+      _webChatEntry = false;
+    });
+
+    if (ch.isNotEmpty) {
+      controller.join(ch);
+    } else if (autoSelectCountryRoom && mounted) {
+      await _showRoomExplorer();
+    }
+  }
+
+  String _normalize(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[áàäâãå]'), 'a')
+        .replaceAll(RegExp(r'[éèëê]'), 'e')
+        .replaceAll(RegExp(r'[íìïî]'), 'i')
+        .replaceAll(RegExp(r'[óòöôõ]'), 'o')
+        .replaceAll(RegExp(r'[úùüû]'), 'u')
+        .replaceAll('ñ', 'n')
+        .replaceAll(RegExp(r'[^a-z0-9#&+!]+'), ' ');
+  }
+
+  bool _containsWord(String value, String word) {
+    final source = _normalize(value);
+    final target = _normalize(word).trim();
+    if (target.isEmpty) return false;
+    return RegExp(r'(^|\s)' + RegExp.escape(target) + r'(\s|$)').hasMatch(source);
+  }
+
+  IrcChannelInfo? _defaultCountryRoom(List<IrcChannelInfo> channels, DetectedCountry? country) {
+    if (country == null) return null;
+    final countryName = _normalize(country.name).trim();
+    final code = _normalize(country.code).trim();
+    if (countryName.isEmpty) return null;
+
+    final scored = <MapEntry<IrcChannelInfo, int>>[];
+    for (final info in channels) {
+      final name = _normalize(info.channel.replaceFirst(RegExp(r'^[#&+!]'), ''));
+      final topic = _normalize(info.topic);
+      var score = 0;
+      if (name == countryName) score += 1000;
+      if (name == code && code.length >= 2) score += 900;
+      if (_containsWord(name, countryName)) score += 700;
+      if (_containsWord(topic, countryName)) score += 500;
+      if (countryName.length > 4 && name.contains(countryName)) score += 350;
+      if (score > 0) scored.add(MapEntry(info, score + info.users.clamp(0, 100)));
+    }
+    if (scored.isEmpty) return null;
+    scored.sort((a, b) => b.value.compareTo(a.value));
+    return scored.first.key;
+  }
+
+  static const Map<String, List<String>> _categoryKeywords = {
+    'Amistad': ['amistad', 'amigos', 'amigas', 'friend', 'friends', 'amigo'],
+    'Citas': ['citas', 'cita', 'ligar', 'ligue', 'dating', 'parejas', 'pareja'],
+    'Juegos': ['juegos', 'juego', 'gaming', 'gamer', 'gamers', 'videojuegos'],
+    'Música': ['musica', 'music', 'musical', 'rock', 'pop', 'reggaeton'],
+    'Sex': ['sex', 'sexo', 'adult', 'adultos', 'erotico', 'erotica', 'xxx'],
+  };
+
+  bool _matchesCategory(IrcChannelInfo info, String category) {
+    final text = _normalize('${info.channel} ${info.topic}');
+    final keywords = _categoryKeywords[category] ?? const <String>[];
+    return keywords.any((keyword) => text.contains(_normalize(keyword)));
+  }
+
+  List<IrcChannelInfo> _categoryRooms(String category) {
+    final result = _channelCatalog.where((info) => _matchesCategory(info, category)).toList();
+    result.sort((a, b) => b.users.compareTo(a.users));
+    return result;
+  }
+
+  List<IrcChannelInfo> _generalRooms() {
+    final thematic = _categoryKeywords.keys.expand(_categoryRooms).map((e) => e.channel.toLowerCase()).toSet();
+    final result = _channelCatalog.where((info) => !thematic.contains(info.channel.toLowerCase())).toList();
+    result.sort((a, b) => b.users.compareTo(a.users));
+    return result;
+  }
+
+  Future<void> _showRoomExplorer() async {
+    if (_catalogLoading) return;
+    if (_channelCatalog.isEmpty && controller.connected) {
+      setState(() => _catalogLoading = true);
+      final catalog = await controller.listChannels();
+      if (!mounted) return;
+      setState(() {
+        _channelCatalog = catalog;
+        _catalogLoading = false;
+      });
+    }
+
+    if (!mounted) return;
+    String selected = 'Amistad';
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF151B22),
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final rooms = selected == 'General' ? _generalRooms() : _categoryRooms(selected);
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * .78,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _country == null ? 'Explorar salas' : 'Salas de ${_country!.name}',
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text('Selecciona una categoría y entra a una sala que realmente esté disponible.'),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: ['General', ..._categoryKeywords.keys].map((category) {
+                        final active = category == selected;
+                        return ChoiceChip(
+                          label: Text(category),
+                          selected: active,
+                          onSelected: (_) => setSheetState(() => selected = category),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 14),
+                    Expanded(
+                      child: rooms.isEmpty
+                          ? const Center(child: Text('No encontré salas de esta categoría.'))
+                          : ListView.separated(
+                              itemCount: rooms.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.white12),
+                              itemBuilder: (_, index) {
+                                final info = rooms[index];
+                                return ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Icon(
+                                    info.users > 0 ? Icons.circle : Icons.circle_outlined,
+                                    size: 12,
+                                    color: info.users > 0 ? const Color(0xFF8FB59B) : Colors.white38,
+                                  ),
+                                  title: Text(info.channel),
+                                  subtitle: Text(
+                                    info.topic.trim().isEmpty ? 'Sin tópico' : info.topic,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  trailing: Text('${info.users}'),
+                                  onTap: () {
+                                    Navigator.pop(sheetContext);
+                                    channel.text = info.channel;
+                                    controller.join(info.channel);
+                                    setState(() {});
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   List<ChatRoomModel> _privateRooms() => controller.rooms.values.where((r) => r.privateChat).toList();
@@ -384,6 +586,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ],
                 ),
                 actions: [
+                  IconButton(
+                    tooltip: 'Explorar salas',
+                    onPressed: _showRoomExplorer,
+                    icon: const Icon(Icons.explore_outlined),
+                  ),
                   Padding(
                     padding: const EdgeInsets.only(right: 12),
                     child: Row(children: [
@@ -464,6 +671,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 )),
               const Divider(height: 28, color: Colors.white12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.explore_outlined),
+                title: const Text('Explorar salas'),
+                subtitle: Text(_country == null ? 'Buscar salas disponibles' : 'Salas de ${_country!.name}'),
+                onTap: () { Navigator.pop(context); _showRoomExplorer(); },
+              ),
+              const Divider(height: 28, color: Colors.white12),
               const Text('UNIRSE A CANAL', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
               const SizedBox(height: 8),
               Row(children: [
@@ -496,6 +711,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white54),
                 ),
+                if (_country != null) ...[
+                  const SizedBox(height: 8),
+                  Text('País detectado: ${_country!.name}', style: const TextStyle(color: Colors.white70)),
+                ],
                 const SizedBox(height: 24),
                 TextField(
                   controller: nick,
@@ -533,10 +752,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     host.text = 'irc.chateamos.org';
     port.text = '6667';
-    channel.text = '#panama';
+    channel.clear();
     secure = false;
     selectedProfile = null;
-    await _connect();
+    _webChatEntry = true;
+    _country = await CountryService.detect();
+    if (mounted) setState(() {});
+    await _connect(autoSelectCountryRoom: true);
   }
 
   Widget _tabs() => SizedBox(
