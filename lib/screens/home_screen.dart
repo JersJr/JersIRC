@@ -569,6 +569,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         appBar: controller.connected
             ? AppBar(
                 backgroundColor: const Color(0xFF151B22),
+                leading: _PrivateAppBarButton(
+                  unreadCount: _privateUnreadTotal(),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
                 title: Row(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.forum_rounded, size: 22),
                   const SizedBox(width: 8),
@@ -580,9 +584,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: const Text('SALAS', style: TextStyle(fontWeight: FontWeight.w700)),
                   ),
                 ]),
-                actions: [
-                  Builder(builder: (context) => IconButton(tooltip: 'Privados', onPressed: () => Scaffold.of(context).openDrawer(), icon: const Icon(Icons.chat_bubble_outline))),
-                ],
               )
             : AppBar(
                 backgroundColor: const Color(0xFF151B22),
@@ -964,6 +965,73 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       Color(0xFFC7A7FF), Color(0xFF72E0D1), Color(0xFFFF9E80), Color(0xFF9FA8DA),
     ];
     return c[h % c.length];
+  }
+}
+
+class _PrivateAppBarButton extends StatefulWidget {
+  final int unreadCount;
+  final VoidCallback onPressed;
+  const _PrivateAppBarButton({required this.unreadCount, required this.onPressed});
+
+  @override
+  State<_PrivateAppBarButton> createState() => _PrivateAppBarButtonState();
+}
+
+class _PrivateAppBarButtonState extends State<_PrivateAppBarButton> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 650),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUnread = widget.unreadCount > 0;
+    return IconButton(
+      tooltip: hasUnread ? 'Privados: ${widget.unreadCount} por leer' : 'Privados',
+      onPressed: widget.onPressed,
+      icon: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (_, __) {
+              final t = hasUnread ? Curves.easeInOut.transform(_controller.value) : 0.0;
+              final color = Color.lerp(
+                Theme.of(context).appBarTheme.foregroundColor ?? Colors.white,
+                Colors.redAccent,
+                t,
+              );
+              return Icon(Icons.chat_bubble_outline, color: color);
+            },
+          ),
+          if (hasUnread)
+            Positioned(
+              right: -7,
+              top: -7,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF151B22), width: 1.5),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  widget.unreadCount > 99 ? '99+' : '${widget.unreadCount}',
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
