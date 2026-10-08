@@ -576,35 +576,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
                 title: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const _JersIrcLogo(size: 28),
-                  const SizedBox(width: 8),
+                  const _JersIrcLogo(size: 24),
+                  const SizedBox(width: 7),
                   ShaderMask(
                     shaderCallback: (bounds) => const LinearGradient(
                       colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)],
                     ).createShader(bounds),
                     child: const Text(
                       'JersIRC',
-                      style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
                   ),
-                  const SizedBox(width: 14),
-                  TextButton(
+                  const SizedBox(width: 12),
+                  TextButton.icon(
                     onPressed: _showRoomExplorer,
                     style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
                       foregroundColor: Colors.white,
                     ),
-                    child: ShaderMask(
+                    icon: ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)],
+                      ).createShader(bounds),
+                      child: const Icon(Icons.explore_outlined, size: 18, color: Colors.white),
+                    ),
+                    label: ShaderMask(
                       shaderCallback: (bounds) => const LinearGradient(
                         colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)],
                       ).createShader(bounds),
                       child: const Text(
                         'SALAS',
-                        style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
                       ),
                     ),
                   ),
                 ]),
+                actions: [
+                  IconButton(
+                    tooltip: 'Ajustes',
+                    onPressed: () {},
+                    icon: const Icon(Icons.settings_outlined),
+                  ),
+                ],
               )
             : AppBar(
                 backgroundColor: const Color(0xFF111820),
