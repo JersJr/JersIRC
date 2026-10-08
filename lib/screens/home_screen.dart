@@ -581,7 +581,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ]),
                 actions: [
-                  Builder(builder: (context) => IconButton(tooltip: 'Configuración avanzada', onPressed: () => Scaffold.of(context).openDrawer(), icon: const Icon(Icons.settings_outlined))),
+                  Builder(builder: (context) => IconButton(tooltip: 'Privados', onPressed: () => Scaffold.of(context).openDrawer(), icon: const Icon(Icons.chat_bubble_outline))),
                 ],
               )
             : AppBar(
@@ -731,26 +731,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   );
                 },
               ),
-              const Divider(height: 28, color: Colors.white12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.explore_outlined),
-                title: const Text('Explorar salas'),
-                subtitle: Text(_country == null ? 'Buscar salas disponibles' : 'Salas de ${_country!.name}'),
-                onTap: () { Navigator.pop(context); _showRoomExplorer(); },
-              ),
-              const Divider(height: 28, color: Colors.white12),
-              const Text('UNIRSE A CANAL', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(child: TextField(controller: channel, decoration: const InputDecoration(hintText: '#panama'))),
-                const SizedBox(width: 8),
-                IconButton.filled(onPressed: controller.connected ? () => controller.join(channel.text) : null, icon: const Icon(Icons.add)),
-              ]),
-            ],
-          ),
-        ),
-      );
 
   Widget _welcome() => Center(
         child: ConstrainedBox(
