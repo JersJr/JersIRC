@@ -214,7 +214,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     nicknameDialogOpen = false;
     if (result == true && mounted && nick.text.trim().isNotEmpty) {
-      await _connect();
+      await _connect(autoSelectCountryRoom: _webChatEntry);
     }
   }
 
@@ -308,7 +308,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (_containsWord(name, countryName)) score += 700;
       if (_containsWord(topic, countryName)) score += 500;
       if (countryName.length > 4 && name.contains(countryName)) score += 350;
-      if (score > 0) scored.add(MapEntry(info, score + info.users.clamp(0, 100)));
+      if (score > 0) scored.add(MapEntry(info, score + info.users.clamp(0, 100).toInt()));
     }
     if (scored.isEmpty) return null;
     scored.sort((a, b) => b.value.compareTo(a.value));
@@ -326,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _matchesCategory(IrcChannelInfo info, String category) {
     final text = _normalize('${info.channel} ${info.topic}');
     final keywords = _categoryKeywords[category] ?? const <String>[];
-    return keywords.any((keyword) => text.contains(_normalize(keyword)));
+    return keywords.any((keyword) => _containsWord(text, keyword));
   }
 
   List<IrcChannelInfo> _categoryRooms(String category) {
