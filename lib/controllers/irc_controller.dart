@@ -23,6 +23,8 @@ class IrcController extends ChangeNotifier {
   String? banChannel;
   bool banIsServer = true;
   bool connected = false, connecting = false, manualDisconnect = false, permanentConnectionFailure = false;
+  Completer<List<IrcChannelInfo>>? _channelListCompleter;
+  final Map<String, IrcChannelInfo> _listedChannels = <String, IrcChannelInfo>{};
   ChatRoomModel? get currentRoom => activeRoom == null ? null : rooms[activeRoom];
 
   Future<void> connect({required String host, required int port, required String nickname, bool secure = false, bool automatic = false}) async {
@@ -45,6 +47,21 @@ class IrcController extends ChangeNotifier {
   }
   bool _isPermanentConnectionError(String value) { final x = value.toLowerCase(); return x.contains('nickname en uso') || x.contains('nickname en conflicto') || x.contains('nickname/recurso no disponible') || x.contains('nickname no válido') || x.contains('contraseña incorrecta') || x.contains('rechazada/bloqueada') || x.contains('baneado') || x.contains('banned') || x.contains('clones') || x.contains('clone') || x.contains('too many connections') || x.contains('k-line') || x.contains('g-line') || x.contains('z-line') || x.contains('akill'); }
   void scheduleReconnect({required String host, required int port, required String nickname, required bool secure}) { _lastHost = host.trim(); _lastPort = port; _lastNickname = nickname.trim(); _lastSecure = secure; _scheduleReconnectIfAllowed(); }
+
+  Future<List<IrcChannelInfo>> listChannels({Duration timeout = const Duration(seconds: 10)}) async {
+    if (!connected) return const <IrcChannelInfo>[];
+    _channelListCompleter?.complete(_listedChannels.values.toList(growable: false));
+    _channelListCompleter = Completer<List<IrcChannelInfo>>();
+    _listedChannels.clear();
+    client.sendRaw('LIST');
+    try {
+      return await _channelListCompleter!.future.timeout(timeout);
+    } on TimeoutException {
+      return _listedChannels.values.toList(growable: false);
+    } finally {
+      _channelListCompleter = null;
+    }
+  }
 
   Future<void> disconnect() async { manualDisconnect = true; _reconnectTimer?.cancel(); await client.disconnect(); connected = false; connecting = false; status = 'Desconectado'; notifyListeners(); }
 
@@ -115,6 +132,16 @@ class IrcController extends ChangeNotifier {
     if (message.command == 'KICK' && message.params.length >= 2) { final channel = message.params.first; final kicked = message.params[1]; rooms[channel]?.removeUser(kicked); if (_sameNick(kicked, _lastNickname)) { rooms.remove(channel); if (activeRoom == channel) activeRoom = rooms.isEmpty ? null : rooms.keys.first; status = 'Expulsado de $channel'; } }
     if (message.command == 'TOPIC' && message.params.isNotEmpty) { final room = rooms[message.params.first]; if (room != null) room.topic = message.trailing; }
     if (message.command == '332' && message.params.length >= 2) { final channel = message.params[1]; final room = rooms.putIfAbsent(channel, () => ChatRoomModel(channel)); room.topic = message.trailing; }
+    if (message.command == '322' && message.params.length >= 4) {
+      final channel = message.params[1];
+      final users = int.tryParse(message.params[2]) ?? 0;
+      final topic = message.params.last;
+      _listedChannels[channel] = IrcChannelInfo(channel: channel, users: users, topic: topic);
+    }
+    if (message.command == '323') {
+      final completer = _channelListCompleter;
+      if (completer != null && !completer.isCompleted) completer.complete(_listedChannels.values.toList(growable: false));
+    }
     if (message.command == 'PRIVMSG' || message.command == 'NOTICE') _handleTextMessage(message, sender);
     if (message.command == '353' && message.params.length >= 3) { final channel = message.params[2]; final room = rooms.putIfAbsent(channel, () => ChatRoomModel(channel)); final names = message.trailing.trim(); if (names.isNotEmpty) { for (final raw in names.split(RegExp(r'\s+'))) { if (raw.isEmpty) continue; final match = RegExp(r'^([~&@%+]+)(.+)$').firstMatch(raw); final prefixes = match?.group(1) ?? ''; final nick = match?.group(2) ?? raw; if (nick.isNotEmpty) room.addUser(nick, prefixes: prefixes); } } }
     if (message.command == 'MODE' && message.params.length >= 2) _applyUserModes(message);
@@ -145,4 +172,17 @@ class IrcController extends ChangeNotifier {
 
   String friendlyError(IrcMessage message) { switch (message.command) { case '431': return 'Falta nickname'; case '432': return 'Nickname no válido: ${message.trailing}'; case '433': return 'Nickname en uso: ${message.trailing}'; case '436': return 'Nickname en conflicto: ${message.trailing}'; case '437': return 'Nickname/recurso no disponible: ${message.trailing}'; case '451': return 'El servidor aún no considera registrada la conexión'; case '464': return 'Contraseña incorrecta o requerida'; case '465': return 'Estás baneado del servidor: ${message.trailing}'; case '474': return 'Estás baneado de ${message.params.length >= 2 ? message.params[1] : 'la sala'}: ${message.trailing}'; case '422': return 'Sin MOTD'; default: return 'IRC ${message.command}: ${message.trailing}'; } }
   @override void dispose() { _reconnectTimer?.cancel(); _subscription?.cancel(); client.dispose(); super.dispose(); }
+}
+
+
+class IrcChannelInfo {
+  final String channel;
+  final int users;
+  final String topic;
+
+  const IrcChannelInfo({
+    required this.channel,
+    required this.users,
+    required this.topic,
+  });
 }
