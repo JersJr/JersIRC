@@ -568,7 +568,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) => Scaffold(
         appBar: controller.connected
             ? AppBar(
-                backgroundColor: const Color(0xFF151B22),
+                backgroundColor: const Color(0xFF111820),
                 leading: Builder(
                   builder: (scaffoldContext) => _PrivateAppBarButton(
                     unreadCount: _privateUnreadTotal(),
@@ -576,23 +576,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
                 title: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.forum_rounded, size: 22),
+                  const _JersIrcLogo(size: 28),
                   const SizedBox(width: 8),
-                  const Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
-                  const SizedBox(width: 14),
-                  TextButton(
-                    onPressed: _showRoomExplorer,
-                    style: TextButton.styleFrom(foregroundColor: Colors.white),
-                    child: const Text('SALAS', style: TextStyle(fontWeight: FontWeight.w700)),
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)],
+                    ).createShader(bounds),
+                    child: const Text(
+                      'JersIRC',
+                      style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                    ),
                   ),
                 ]),
               )
             : AppBar(
-                backgroundColor: const Color(0xFF151B22),
-                title: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.forum_rounded, size: 22), SizedBox(width: 8), Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700))]),
+                backgroundColor: const Color(0xFF111820),
+                title: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  _JersIrcLogo(size: 28),
+                  SizedBox(width: 8),
+                  Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+                ]),
               ),
         drawer: controller.connected ? _drawer() : null,
         body: Column(children: [
+          if (room != null) _tabs(),
           Expanded(child: Row(children: [
             Expanded(child: room == null ? _welcome() : _chat(room!)),
             if (room != null && !room!.privateChat) usersVisible ? _users(room!) : _collapsedUsers(room!),
@@ -967,6 +974,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       Color(0xFFC7A7FF), Color(0xFF72E0D1), Color(0xFFFF9E80), Color(0xFF9FA8DA),
     ];
     return c[h % c.length];
+  }
+}
+
+class _JersIrcLogo extends StatelessWidget {
+  final double size;
+  const _JersIrcLogo({this.size = 28});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(size * .25),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF35C5FF), Color(0xFF7657FF)],
+        ),
+        boxShadow: const [
+          BoxShadow(color: Color(0x5535C5FF), blurRadius: 7, spreadRadius: 1),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        'J',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: size * .58,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
+      ),
+    );
   }
 }
 
