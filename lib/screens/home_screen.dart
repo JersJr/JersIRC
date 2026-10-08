@@ -569,9 +569,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         appBar: controller.connected
             ? AppBar(
                 backgroundColor: const Color(0xFF151B22),
-                title: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.forum_rounded, size: 22), SizedBox(width: 8), Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700))]),
+                title: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.forum_rounded, size: 22),
+                  const SizedBox(width: 8),
+                  const Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 14),
+                  TextButton(
+                    onPressed: _showRoomExplorer,
+                    style: TextButton.styleFrom(foregroundColor: Colors.white),
+                    child: const Text('SALAS', style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ]),
                 actions: [
-                  IconButton(tooltip: 'SALAS', onPressed: _showRoomExplorer, icon: const Icon(Icons.forum_outlined)),
                   Builder(builder: (context) => IconButton(tooltip: 'Configuración avanzada', onPressed: () => Scaffold.of(context).openDrawer(), icon: const Icon(Icons.settings_outlined))),
                 ],
               )
@@ -581,7 +590,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
         drawer: controller.connected ? _drawer() : null,
         body: Column(children: [
-          if (controller.rooms.isNotEmpty || controller.connected) _navigationPanel(),
           Expanded(child: Row(children: [
             Expanded(child: room == null ? _welcome() : _chat(room!)),
             if (room != null && !room!.privateChat) usersVisible ? _users(room!) : _collapsedUsers(room!),
@@ -671,14 +679,65 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const Center(child: Text('Configuración avanzada', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
               const Center(child: Text('IRC, simple y claro', style: TextStyle(color: Colors.white54))),
               const SizedBox(height: 22),
+              const Text('CAMBIAR DE NICK', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: nick,
+                    enabled: controller.connected && !controller.connecting,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _changeNickname(),
+                    decoration: const InputDecoration(
+                      hintText: 'Nuevo Nick',
+                      prefixIcon: Icon(Icons.edit_outlined),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'Cambiar Nick',
+                  onPressed: controller.connected && !controller.connecting ? _changeNickname : null,
+                  icon: const Icon(Icons.check),
+                ),
+              ]),
+              const SizedBox(height: 18),
+              const Text('DM', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
+              const SizedBox(height: 8),
+              Builder(
+                builder: (_) {
+                  final privates = _privateRooms();
+                  if (privates.isEmpty) {
+                    return const Text('Sin conversaciones privadas', style: TextStyle(color: Colors.white38, fontSize: 12));
+                  }
+                  return Column(
+                    children: privates.map((r) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      selected: r.name == controller.activeRoom,
+                      leading: Icon(Icons.person_outline, color: _nickColor(r.name)),
+                      title: r.unread > 0 && r.name != controller.activeRoom
+                          ? _BlinkingUnread(label: Text(r.name), count: r.unread, color: _nickColor(r.name))
+                          : Text(r.name, overflow: TextOverflow.ellipsis),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openPrivateRoom(r.name);
+                      },
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close, size: 16),
+                        onPressed: () => _closeRoom(r.name),
+                      ),
+                    )).toList(),
+                  );
+                },
+              ),
+              const Divider(height: 28, color: Colors.white12),
               const Text('CONEXIÓN', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
               const SizedBox(height: 10),
               TextField(controller: host, decoration: const InputDecoration(labelText: 'Servidor')),
               const SizedBox(height: 8),
               Row(children: [
                 Expanded(child: TextField(controller: port, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto'))),
-                const SizedBox(width: 8),
-                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname')),
               ]),
               SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('TLS / SSL'), value: secure, onChanged: controller.connecting ? null : (v) => setState(() => secure = v)),
               FilledButton.icon(onPressed: controller.connecting ? null : (controller.connected ? controller.disconnect : _connect), icon: Icon(controller.connected ? Icons.link_off : Icons.link), label: Text(controller.connected ? 'Desconectar' : 'Conectar')),
