@@ -297,61 +297,59 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final countryName = _normalize(country.name).trim();
     final code = _normalize(country.code).trim();
     if (countryName.isEmpty) return null;
-
-    final scored = <MapEntry<IrcChannelInfo, int>>[];
+    // Solo el NOMBRE de la sala decide el ingreso automático. Nunca el topic.
     for (final info in channels) {
-      final name = _normalize(info.channel.replaceFirst(RegExp(r'^[#&+!]'), ''));
-      final topic = _normalize(info.topic);
-      var score = 0;
-      if (name == countryName) score += 1000;
-      if (name == code && code.length >= 2) score += 900;
-      if (_containsWord(name, countryName)) score += 700;
-      if (_containsWord(topic, countryName)) score += 500;
-      if (countryName.length > 4 && name.contains(countryName)) score += 350;
-      if (score > 0) scored.add(MapEntry(info, score + info.users.clamp(0, 100).toInt()));
+      final name = _normalize(info.channel.replaceFirst(RegExp(r'^[#&+!]'), '')).trim();
+      if (name == countryName) return info;
     }
-    if (scored.isEmpty) return null;
-    scored.sort((a, b) => b.value.compareTo(a.value));
-    return scored.first.key;
+    if (code.length >= 2) {
+      for (final info in channels) {
+        final name = _normalize(info.channel.replaceFirst(RegExp(r'^[#&+!]'), '')).trim();
+        if (name == code) return info;
+      }
+    }
+    return null;
   }
 
   static const Map<String, List<String>> _categoryKeywords = {
-    'Amistad': ['amistad', 'amigos', 'amigas', 'friend', 'friends', 'amigo'],
-    'Citas': ['citas', 'cita', 'ligar', 'ligue', 'dating', 'parejas', 'pareja'],
+    'Amistad': ['amistad', 'amigos', 'amigas', 'amigo', 'friend', 'friends'],
+    'Sex': ['sex', 'sexo', 'adult', 'adultos', 'erotico', 'erotica', 'xxx'],
     'Juegos': ['juegos', 'juego', 'gaming', 'gamer', 'gamers', 'videojuegos'],
     'Música': ['musica', 'music', 'musical', 'rock', 'pop', 'reggaeton'],
-    'Sex': ['sex', 'sexo', 'adult', 'adultos', 'erotico', 'erotica', 'xxx'],
   };
 
-  bool _matchesCategory(IrcChannelInfo info, String category) {
-    final text = _normalize('${info.channel} ${info.topic}');
-    final keywords = _categoryKeywords[category] ?? const <String>[];
-    return keywords.any((keyword) => _containsWord(text, keyword));
+  static const List<String> _countryKeywords = [
+    'afganistan','albania','alemania','andorra','angola','arabia','argelia','argentina','armenia','australia','austria','azerbaiyan','bahamas','bahrein','bangladesh','barbados','belgica','belice','benin','bhutan','bolivia','bosnia','botsuana','brasil','brunei','bulgaria','burkina','burundi','cabo','camerun','canada','chad','chile','china','chipre','colombia','comoras','congo','corea','croacia','cuba','dinamarca','dominica','ecuador','egipto','elsalvador','emiratos','eritrea','eslovaquia','eslovenia','espana','estadosunidos','estonia','etiopia','filipinas','finlandia','fiyi','francia','gabon','gambia','georgia','ghana','granada','grecia','guatemala','guinea','guyana','haiti','honduras','hungria','india','indonesia','iran','iraq','irlanda','islandia','israel','italia','jamaica','japon','jordania','kazajistan','kenia','kirguistan','kuwait','laos','letonia','libano','liberia','libia','liechtenstein','lituania','luxemburgo','madagascar','malasia','malaui','maldivas','mali','malta','marruecos','mauritania','mauricio','mexico','moldavia','monaco','mongolia','montenegro','mozambique','namibia','nepal','nicaragua','niger','nigeria','noruega','nuevazelanda','oman','paisesbajos','pakistan','panama','paraguay','peru','polonia','portugal','qatar','republicadominicana','rumania','rusia','salvador','samoa','senegal','serbia','singapur','siria','somalia','srilanka','sudafrica','sudan','suecia','suiza','tailandia','taiwan','tanzania','togo','tonga','trinidad','tunez','turquia','ucrania','uganda','uruguay','uzbekistan','vanuatu','venezuela','vietnam','yemen','zambia','zimbabue'
+  ];
+
+  bool _channelNameMatches(IrcChannelInfo info, String keyword) {
+    final name = _normalize(info.channel.replaceFirst(RegExp(r'^[#&+!]'), ''));
+    final key = _normalize(keyword);
+    return name == key || _containsWord(name, key) || name.startsWith('$key-') || name.startsWith('${key}_');
+  }
+
+  bool _isCountryRoom(IrcChannelInfo info) => _countryKeywords.any((country) => _channelNameMatches(info, country));
+
+  String? _categoryFor(IrcChannelInfo info) {
+    // Una sala solo puede pertenecer a una categoría y se analiza solo su nombre.
+    for (final category in _categoryKeywords.keys) {
+      if (_categoryKeywords[category]!.any((keyword) => _channelNameMatches(info, keyword))) return category;
+    }
+    if (_isCountryRoom(info)) return 'Países';
+    return null;
   }
 
   List<IrcChannelInfo> _categoryRooms(String category) {
-    final countryName = _country == null ? '' : _normalize(_country!.name);
-    final result = _channelCatalog.where((info) => _matchesCategory(info, category)).toList();
-    result.sort((a, b) {
-      int localScore(IrcChannelInfo info) {
-        if (countryName.isEmpty) return 0;
-        final text = _normalize('${info.channel} ${info.topic}');
-        return _containsWord(text, countryName) ? 1 : 0;
-      }
-      final local = localScore(b).compareTo(localScore(a));
-      if (local != 0) return local;
-      return b.users.compareTo(a.users);
-    });
-    return result;
+    final result = _channelCatalog.where((info) => _categoryFor(info) == category).toList();
+    result.sort((a, b) => b.users.compareTo(a.users));
+    return result.take(10).toList();
   }
 
   List<IrcChannelInfo> _generalRooms() {
-    final thematic = _categoryKeywords.keys.expand(_categoryRooms).map((e) => e.channel.toLowerCase()).toSet();
-    final result = _channelCatalog.where((info) => !thematic.contains(info.channel.toLowerCase())).toList();
+    final result = _channelCatalog.where((info) => _categoryFor(info) == null).toList();
     result.sort((a, b) => b.users.compareTo(a.users));
-    return result;
+    return result.take(10).toList();
   }
-
   Future<void> _showRoomExplorer() async {
     if (_catalogLoading) return;
     if (_channelCatalog.isEmpty && controller.connected) {
@@ -365,7 +363,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     if (!mounted) return;
-    String selected = 'Amistad';
+    String selected = 'Países';
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -409,7 +407,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: ['General', ..._categoryKeywords.keys].map((category) {
+                      children: ['Países', ..._categoryKeywords.keys, 'General'].map((category) {
                         final active = category == selected;
                         return ChoiceChip(
                           label: Text(category),
@@ -571,198 +569,59 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         appBar: controller.connected
             ? AppBar(
                 backgroundColor: const Color(0xFF151B22),
-                title: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.forum_rounded, size: 22),
-                    SizedBox(width: 8),
-                    Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
-                  ],
-                ),
+                title: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.forum_rounded, size: 22), SizedBox(width: 8), Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700))]),
                 actions: [
-                  PopupMenuButton<String>(
-                    tooltip: 'Salas',
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.forum_outlined, size: 20),
-                          SizedBox(width: 6),
-                          Text('SALAS', style: TextStyle(fontWeight: FontWeight.w700)),
-                          Icon(Icons.arrow_drop_down),
-                        ],
-                      ),
-                    ),
-                    itemBuilder: (_) => _roomCatalogForDisplay().isEmpty
-                        ? const [PopupMenuItem<String>(enabled: false, child: Text('No hay salas disponibles'))]
-                        : _roomCatalogForDisplay().map((info) => PopupMenuItem<String>(
-                            value: info.channel,
-                            child: Text('${info.channel} ${info.users} usuarios'),
-                          )).toList(),
-                    onSelected: (name) {
-                      channel.text = name;
-                      controller.join(name);
-                    },
-                  ),
-                  Builder(
-                    builder: (context) => IconButton(
-                      tooltip: 'Configuración avanzada',
-                      onPressed: () => Scaffold.of(context).openDrawer(),
-                      icon: const Icon(Icons.settings_outlined),
-                    ),
-                  ),
+                  IconButton(tooltip: 'SALAS', onPressed: _showRoomExplorer, icon: const Icon(Icons.forum_outlined)),
+                  Builder(builder: (context) => IconButton(tooltip: 'Configuración avanzada', onPressed: () => Scaffold.of(context).openDrawer(), icon: const Icon(Icons.settings_outlined))),
                 ],
               )
             : AppBar(
                 backgroundColor: const Color(0xFF151B22),
-                title: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.forum_rounded, size: 22),
-                    SizedBox(width: 8),
-                    Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
-                  ],
-                ),
+                title: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.forum_rounded, size: 22), SizedBox(width: 8), Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700))]),
               ),
         drawer: controller.connected ? _drawer() : null,
-        body: Column(
-          children: [
-            if (controller.rooms.isNotEmpty || controller.connected)
-              _navigationPanel(),
-            Expanded(
-              child: Row(
-                children: [
-                  Expanded(child: room == null ? _welcome() : _chat(room!)),
-                  if (room != null && !room!.privateChat)
-                    usersVisible ? _users(room!) : _collapsedUsers(room!),
-                ],
-              ),
-            ),
-            if (room != null) _composer(),
-          ],
-        ),
+        body: Column(children: [
+          if (controller.rooms.isNotEmpty || controller.connected) _navigationPanel(),
+          Expanded(child: Row(children: [
+            Expanded(child: room == null ? _welcome() : _chat(room!)),
+            if (room != null && !room!.privateChat) usersVisible ? _users(room!) : _collapsedUsers(room!),
+          ])),
+          if (room != null) _composer(),
+        ]),
       );
-
-  List<IrcChannelInfo> _roomCatalogForDisplay() {
-    final byName = <String, IrcChannelInfo>{};
-    for (final info in _channelCatalog) {
-      byName[info.channel.toLowerCase()] = info;
-    }
-    for (final r in controller.rooms.values.where((r) => !r.privateChat)) {
-      final key = r.name.toLowerCase();
-      final existing = byName[key];
-      if (existing == null) {
-        byName[key] = IrcChannelInfo(channel: r.name, users: r.users.length, topic: r.topic ?? '');
-      } else if (r.users.length > existing.users) {
-        byName[key] = IrcChannelInfo(channel: existing.channel, users: r.users.length, topic: existing.topic);
-      }
-    }
-    final result = byName.values.toList();
-    result.sort((a, b) => b.users.compareTo(a.users));
-    return result.take(10).toList();
-  }
 
   Widget _navigationPanel() {
     final privates = _privateRooms();
-    final rooms = _roomCatalogForDisplay();
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
-        color: Color(0xFF151B22),
-        border: Border(bottom: BorderSide(color: Colors.white10)),
-      ),
+      decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(bottom: BorderSide(color: Colors.white10))),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.person_outline, size: 18),
-                const SizedBox(width: 7),
-                const Text('CAMBIAR DE NICK', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: SizedBox(
-                    height: 40,
-                    child: TextField(
-                      controller: nick,
-                      enabled: controller.connected && !controller.connecting,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _changeNickname(),
-                      decoration: const InputDecoration(
-                        hintText: 'Nuevo Nick',
-                        prefixIcon: Icon(Icons.edit_outlined, size: 18),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filledTonal(
-                  tooltip: 'Cambiar Nick',
-                  onPressed: controller.connected && !controller.connecting ? _changeNickname : null,
-                  icon: const Icon(Icons.check),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _navigationSection(
-                    title: 'PRIVADOS',
-                    icon: Icons.chat_bubble_outline,
-                    child: privates.isEmpty
-                        ? const Text('Sin privados', style: TextStyle(color: Colors.white38, fontSize: 12))
-                        : SizedBox(
-                            height: 42,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: privates.length,
-                              separatorBuilder: (_, __) => const SizedBox(width: 6),
-                              itemBuilder: (_, index) => _privateChip(privates[index]),
-                            ),
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: _navigationSection(
-                    title: 'SALAS',
-                    icon: Icons.forum_outlined,
-                    child: rooms.isEmpty
-                        ? const Text('Buscando salas...', style: TextStyle(color: Colors.white38, fontSize: 12))
-                        : SizedBox(
-                            height: 42,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: rooms.length,
-                              separatorBuilder: (_, __) => const SizedBox(width: 6),
-                              itemBuilder: (_, index) {
-                                final info = rooms[index];
-                                return ActionChip(
-                                  avatar: const Icon(Icons.forum_outlined, size: 16),
-                                  label: Text('${info.channel} ${info.users} usuarios'),
-                                  onPressed: () {
-                                    channel.text = info.channel;
-                                    controller.join(info.channel);
-                                  },
-                                );
-                              },
-                            ),
-                          ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Row(children: [
+            const Icon(Icons.person_outline, size: 18),
+            const SizedBox(width: 7),
+            const Text('CAMBIAR DE NICK', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54)),
+            const SizedBox(width: 10),
+            Expanded(child: SizedBox(height: 40, child: TextField(
+              controller: nick, enabled: controller.connected && !controller.connecting,
+              textInputAction: TextInputAction.done, onSubmitted: (_) => _changeNickname(),
+              decoration: const InputDecoration(hintText: 'Nuevo Nick', prefixIcon: Icon(Icons.edit_outlined, size: 18)),
+            ))),
+            const SizedBox(width: 8),
+            IconButton.filledTonal(tooltip: 'Cambiar Nick', onPressed: controller.connected && !controller.connecting ? _changeNickname : null, icon: const Icon(Icons.check)),
+          ])),
+          const SizedBox(width: 18),
+          SizedBox(width: MediaQuery.of(context).size.width * .36, child: _navigationSection(
+            title: 'DM', icon: Icons.chat_bubble_outline,
+            child: privates.isEmpty
+                ? const Text('Sin conversaciones privadas', style: TextStyle(color: Colors.white38, fontSize: 12))
+                : SizedBox(height: 42, child: ListView.separated(scrollDirection: Axis.horizontal, itemCount: privates.length, separatorBuilder: (_, __) => const SizedBox(width: 6), itemBuilder: (_, index) => _privateChip(privates[index]))),
+          )),
+        ]),
       ),
     );
   }
-
   Widget _navigationSection({required String title, required IconData icon, required Widget child}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
