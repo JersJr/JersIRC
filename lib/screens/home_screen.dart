@@ -330,8 +330,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   List<IrcChannelInfo> _categoryRooms(String category) {
+    final countryName = _country == null ? '' : _normalize(_country!.name);
     final result = _channelCatalog.where((info) => _matchesCategory(info, category)).toList();
-    result.sort((a, b) => b.users.compareTo(a.users));
+    result.sort((a, b) {
+      int localScore(IrcChannelInfo info) {
+        if (countryName.isEmpty) return 0;
+        final text = _normalize('${info.channel} ${info.topic}');
+        return _containsWord(text, countryName) ? 1 : 0;
+      }
+      final local = localScore(b).compareTo(localScore(a));
+      if (local != 0) return local;
+      return b.users.compareTo(a.users);
+    });
     return result;
   }
 
@@ -372,9 +382,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _country == null ? 'Explorar salas' : 'Salas de ${_country!.name}',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _country == null ? 'Explorar salas' : 'Salas de ${_country!.name}',
+                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Actualizar salas',
+                          onPressed: () async {
+                            setSheetState(() {});
+                            final catalog = await controller.listChannels();
+                            if (!mounted) return;
+                            setState(() => _channelCatalog = catalog);
+                            setSheetState(() {});
+                          },
+                          icon: const Icon(Icons.refresh),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 6),
                     const Text('Selecciona una categoría y entra a una sala que realmente esté disponible.'),
