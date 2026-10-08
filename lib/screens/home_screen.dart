@@ -676,8 +676,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Center(child: Text('Configuración avanzada', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
-              const Center(child: Text('IRC, simple y claro', style: TextStyle(color: Colors.white54))),
+              const Center(child: Text('CN.PV', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
+              const Center(child: Text('Cambiar nick y Privados', style: TextStyle(color: Colors.white54))),
               const SizedBox(height: 22),
               const Text('CAMBIAR DE NICK', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
               const SizedBox(height: 8),
@@ -702,7 +702,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ]),
               const SizedBox(height: 18),
-              const Text('DM', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
+              const Text('PV', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
               const SizedBox(height: 8),
               Builder(
                 builder: (_) {
@@ -731,35 +731,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   );
                 },
               ),
-              const Divider(height: 28, color: Colors.white12),
-              const Text('CONEXIÓN', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
-              const SizedBox(height: 10),
-              TextField(controller: host, decoration: const InputDecoration(labelText: 'Servidor')),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(child: TextField(controller: port, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Puerto'))),
-              ]),
-              SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('TLS / SSL'), value: secure, onChanged: controller.connecting ? null : (v) => setState(() => secure = v)),
-              FilledButton.icon(onPressed: controller.connecting ? null : (controller.connected ? controller.disconnect : _connect), icon: Icon(controller.connected ? Icons.link_off : Icons.link), label: Text(controller.connected ? 'Desconectar' : 'Conectar')),
-              const Divider(height: 28, color: Colors.white12),
-              const Text('PERFILES', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
-              const SizedBox(height: 8),
-              FilledButton.tonalIcon(onPressed: () => _saveProfile(), icon: const Icon(Icons.save_outlined), label: const Text('Guardar perfil')),
-              if (savedServers.isEmpty)
-                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('No hay perfiles guardados', style: TextStyle(color: Colors.white54)))
-              else
-                ...savedServers.map((s) => ListTile(
-                  selected: selectedProfile == s.name,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(s.tls ? Icons.lock_outline : Icons.public),
-                  title: Text(s.name, overflow: TextOverflow.ellipsis),
-                  subtitle: Text('${s.host}:${s.port} • ${s.nickname}', overflow: TextOverflow.ellipsis),
-                  onTap: () { _applyProfile(s); Navigator.pop(context); },
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (v) { if (v == 'edit') _saveProfile(existing: s); if (v == 'delete') _deleteProfile(s); },
-                    itemBuilder: (_) => const [PopupMenuItem(value: 'edit', child: Text('Editar')), PopupMenuItem(value: 'delete', child: Text('Eliminar'))],
-                  ),
-                )),
               const Divider(height: 28, color: Colors.white12),
               ListTile(
                 contentPadding: EdgeInsets.zero,
