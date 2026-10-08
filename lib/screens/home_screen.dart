@@ -429,18 +429,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 final info = rooms[index];
                                 return ListTile(
                                   contentPadding: EdgeInsets.zero,
-                                  leading: Icon(
-                                    info.users > 0 ? Icons.circle : Icons.circle_outlined,
-                                    size: 12,
-                                    color: info.users > 0 ? const Color(0xFF8FB59B) : Colors.white38,
-                                  ),
-                                  title: Text(info.channel),
-                                  subtitle: Text(
-                                    info.topic.trim().isEmpty ? 'Sin tópico' : info.topic,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  trailing: Text('${info.users}'),
+                                  leading: const Icon(Icons.forum_outlined, size: 18),
+                                  title: Text('${info.channel} ${info.users} usuarios'),
                                   onTap: () {
                                     Navigator.pop(sheetContext);
                                     channel.text = info.channel;
@@ -581,50 +571,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         appBar: controller.connected
             ? AppBar(
                 backgroundColor: const Color(0xFF151B22),
-                title: Row(
+                title: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.forum_rounded, size: 22),
-                    const SizedBox(width: 8),
-                    PopupMenuButton<String>(
-                      tooltip: 'Privados',
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        const Text('PRIVADOS', style: TextStyle(fontWeight: FontWeight.w700)),
-                        const SizedBox(width: 3),
-                        if (_privateUnreadTotal() > 0)
-                          _BlinkingUnread(label: const Text(''), count: _privateUnreadTotal(), color: _nickColor(_privateRooms().first.name)),
-                        const Icon(Icons.arrow_drop_down, size: 22),
-                      ]),
-                      onSelected: _openPrivateRoom,
-                      itemBuilder: (_) {
-                        final privates = _privateRooms();
-                        if (privates.isEmpty) return const [PopupMenuItem<String>(enabled: false, child: Text('No hay privados abiertos'))];
-                        return privates.map((r) => PopupMenuItem<String>(
-                          value: r.name,
-                          child: Row(children: [
-                            Icon(Icons.person_outline, size: 17, color: _nickColor(r.name)),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(r.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(r.name)))),
-                            if (r.unread > 0) ...[const SizedBox(width: 8), _BlinkingUnread(label: const Text(''), count: r.unread, color: _nickColor(r.name))],
-                          ]),
-                        )).toList();
-                      },
-                    ),
+                    Icon(Icons.forum_rounded, size: 22),
+                    SizedBox(width: 8),
+                    Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
                 actions: [
-                  IconButton(
-                    tooltip: 'Explorar salas',
-                    onPressed: _showRoomExplorer,
-                    icon: const Icon(Icons.explore_outlined),
+                  PopupMenuButton<String>(
+                    tooltip: 'Salas',
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.forum_outlined, size: 20),
+                          SizedBox(width: 6),
+                          Text('SALAS', style: TextStyle(fontWeight: FontWeight.w700)),
+                          Icon(Icons.arrow_drop_down),
+                        ],
+                      ),
+                    ),
+                    itemBuilder: (_) => _roomCatalogForDisplay().isEmpty
+                        ? const [PopupMenuItem<String>(enabled: false, child: Text('No hay salas disponibles'))]
+                        : _roomCatalogForDisplay().map((info) => PopupMenuItem<String>(
+                            value: info.channel,
+                            child: Text('${info.channel} ${info.users} usuarios'),
+                          )).toList(),
+                    onSelected: (name) {
+                      channel.text = name;
+                      controller.join(name);
+                    },
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: Row(children: [
-                      Icon(Icons.circle, size: 9, color: const Color(0xFF8FB59B)),
-                      const SizedBox(width: 6),
-                      SizedBox(width: 150, child: Text(controller.status, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
-                    ]),
+                  Builder(
+                    builder: (context) => IconButton(
+                      tooltip: 'Configuración avanzada',
+                      onPressed: () => Scaffold.of(context).openDrawer(),
+                      icon: const Icon(Icons.settings_outlined),
+                    ),
                   ),
                 ],
               )
@@ -642,14 +628,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         drawer: controller.connected ? _drawer() : null,
         body: Column(
           children: [
-            if (controller.rooms.isNotEmpty) _tabs(),
+            if (controller.rooms.isNotEmpty || controller.connected)
+              _navigationPanel(),
             Expanded(
               child: Row(
                 children: [
                   Expanded(child: room == null ? _welcome() : _chat(room!)),
-                  if (room != null && !room!.privateChat) ...[
+                  if (room != null && !room!.privateChat)
                     usersVisible ? _users(room!) : _collapsedUsers(room!),
-                  ],
                 ],
               ),
             ),
@@ -658,13 +644,172 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
 
+  List<IrcChannelInfo> _roomCatalogForDisplay() {
+    final byName = <String, IrcChannelInfo>{};
+    for (final info in _channelCatalog) {
+      byName[info.channel.toLowerCase()] = info;
+    }
+    for (final r in controller.rooms.values.where((r) => !r.privateChat)) {
+      final key = r.name.toLowerCase();
+      final existing = byName[key];
+      if (existing == null) {
+        byName[key] = IrcChannelInfo(channel: r.name, users: r.users.length, topic: r.topic ?? '');
+      } else if (r.users.length > existing.users) {
+        byName[key] = IrcChannelInfo(channel: existing.channel, users: r.users.length, topic: existing.topic);
+      }
+    }
+    final result = byName.values.toList();
+    result.sort((a, b) => b.users.compareTo(a.users));
+    return result.take(10).toList();
+  }
+
+  Widget _navigationPanel() {
+    final privates = _privateRooms();
+    final rooms = _roomCatalogForDisplay();
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: Color(0xFF151B22),
+        border: Border(bottom: BorderSide(color: Colors.white10)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.person_outline, size: 18),
+                const SizedBox(width: 7),
+                const Text('CAMBIAR DE NICK', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 40,
+                    child: TextField(
+                      controller: nick,
+                      enabled: controller.connected && !controller.connecting,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _changeNickname(),
+                      decoration: const InputDecoration(
+                        hintText: 'Nuevo Nick',
+                        prefixIcon: Icon(Icons.edit_outlined, size: 18),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'Cambiar Nick',
+                  onPressed: controller.connected && !controller.connecting ? _changeNickname : null,
+                  icon: const Icon(Icons.check),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _navigationSection(
+                    title: 'PRIVADOS',
+                    icon: Icons.chat_bubble_outline,
+                    child: privates.isEmpty
+                        ? const Text('Sin privados', style: TextStyle(color: Colors.white38, fontSize: 12))
+                        : SizedBox(
+                            height: 42,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: privates.length,
+                              separatorBuilder: (_, __) => const SizedBox(width: 6),
+                              itemBuilder: (_, index) => _privateChip(privates[index]),
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: _navigationSection(
+                    title: 'SALAS',
+                    icon: Icons.forum_outlined,
+                    child: rooms.isEmpty
+                        ? const Text('Buscando salas...', style: TextStyle(color: Colors.white38, fontSize: 12))
+                        : SizedBox(
+                            height: 42,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: rooms.length,
+                              separatorBuilder: (_, __) => const SizedBox(width: 6),
+                              itemBuilder: (_, index) {
+                                final info = rooms[index];
+                                return ActionChip(
+                                  avatar: const Icon(Icons.forum_outlined, size: 16),
+                                  label: Text('${info.channel} ${info.users} usuarios'),
+                                  onPressed: () {
+                                    channel.text = info.channel;
+                                    controller.join(info.channel);
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _navigationSection({required String title, required IconData icon, required Widget child}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 16, color: Colors.white70),
+            const SizedBox(width: 6),
+            Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54)),
+          ],
+        ),
+        const SizedBox(height: 5),
+        child,
+      ],
+    );
+  }
+
+  Widget _privateChip(ChatRoomModel r) {
+    final active = r.name == controller.activeRoom;
+    final label = r.unread > 0 && !active ? '${r.name} (${r.unread})' : r.name;
+    return ActionChip(
+      avatar: Icon(Icons.person_outline, size: 16, color: _nickColor(r.name)),
+      label: Text(label, overflow: TextOverflow.ellipsis),
+      backgroundColor: active ? const Color(0xFF53677D) : null,
+      onPressed: () => _openPrivateRoom(r.name),
+    );
+  }
+
+  Future<void> _changeNickname() async {
+    final value = nick.text.trim();
+    if (value.isEmpty || !controller.connected) return;
+    controller.changeNick(value);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Nick cambiado a $value')),
+      );
+      setState(() {});
+    }
+  }
+
   Widget _drawer() => Drawer(
         backgroundColor: const Color(0xFF151B22),
         child: SafeArea(
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Center(child: Text('JersIRC', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800))),
+              const Center(child: Text('Configuración avanzada', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
               const Center(child: Text('IRC, simple y claro', style: TextStyle(color: Colors.white54))),
               const SizedBox(height: 22),
               const Text('CONEXIÓN', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
