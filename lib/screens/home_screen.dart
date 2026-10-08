@@ -587,6 +587,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
                     ),
                   ),
+                  const SizedBox(width: 14),
+                  TextButton(
+                    onPressed: _showRoomExplorer,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)],
+                      ).createShader(bounds),
+                      child: const Text(
+                        'SALAS',
+                        style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                      ),
+                    ),
+                  ),
                 ]),
               )
             : AppBar(
