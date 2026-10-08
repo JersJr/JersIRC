@@ -571,7 +571,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 backgroundColor: const Color(0xFF151B22),
                 leading: _PrivateAppBarButton(
                   unreadCount: _privateUnreadTotal(),
-                  onPressed: () => Scaffold.of(context).openDrawer(),
+                  onPressed: () { Scaffold.of(context).openDrawer(); },
                 ),
                 title: Row(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.forum_rounded, size: 22),
