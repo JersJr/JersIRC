@@ -649,7 +649,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         appBar: controller.connected
             ? AppBar(
                 backgroundColor: const Color(0xFF111820),
-                leading: const SizedBox(width: 8),
+                leading: const SizedBox.shrink(),
+                leadingWidth: 8,
                 titleSpacing: 0,
                 title: Row(mainAxisSize: MainAxisSize.min, children: [
                   const _JersIrcLogo(size: 24),
@@ -685,11 +686,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       icon: const Icon(Icons.explore_outlined, size: 18),
-                      label: const Text('DESCUBRIR SALAS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                      label: const Text('BUSCAR SALAS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
                     )
                   else
                     IconButton(
-                      tooltip: 'DESCUBRIR SALAS',
+                      tooltip: 'Buscar salas',
                       onPressed: _showRoomExplorer,
                       icon: const Icon(Icons.explore_outlined, color: Color(0xFF9B7BFF)),
                     ),
@@ -728,9 +729,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Expanded(child: Row(children: [
             Expanded(child: room == null ? _welcome() : _chat(room!)),
             if (room != null && !room!.privateChat)
-              usersVisible ? _users(room!) : _collapsedUsers(room!)
-            else if (room != null && room!.privateChat)
-              privateVisible ? _privateSidebar() : _collapsedPrivateSidebar(),
+              usersVisible ? _users(room!) : _collapsedUsers(room!),
           ])),
           if (room != null) _composer(),
         ]),
@@ -993,7 +992,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            r.privateChat ? 'Chat privado · ${r.name}' : r.name,
+            r.privateChat ? 'Chat privado · ${r.name}' : '',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
