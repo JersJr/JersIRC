@@ -38,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     controller.addListener(_refresh);
     _loadServers();
+    _loadLastNickname();
   }
 
   void _refresh() {
@@ -69,6 +70,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => savedServers = list);
     // La pantalla inicial usa siempre el acceso WebChat. Los perfiles se mantienen
     // disponibles únicamente desde la configuración avanzada después de conectar.
+  }
+
+  Future<void> _loadLastNickname() async {
+    final last = await storage.getLastNickname();
+    if (!mounted || nick.text.trim().isNotEmpty || last == null) return;
+    nick.text = last;
+    setState(() {});
   }
 
   Future<void> _loadLastServer() async {
@@ -225,6 +233,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     var ch = channel.text.trim();
 
     await controller.connect(host: h, port: p, nickname: n, secure: secure);
+    if (controller.connected) await storage.saveLastNickname(n);
     if (!controller.connected) {
       if (mounted && controller.banNotice != null) { await _showBanError(); return; }
       if (mounted && _isNicknameError(controller.status)) await _showNicknameError();
@@ -316,6 +325,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     'Sex': ['sex', 'sexo', 'adult', 'adultos', 'erotico', 'erotica', 'xxx'],
     'Juegos': ['juegos', 'juego', 'gaming', 'gamer', 'gamers', 'videojuegos'],
     'Música': ['musica', 'music', 'musical', 'rock', 'pop', 'reggaeton'],
+    'LGBT': ['lgbt', 'lgbtq', 'gay', 'gays', 'lesbiana', 'lesbianas', 'lesbian', 'trans', 'transgenero', 'transexual', 'bisexual', 'bisexuales', 'queer', 'orgullo', 'amistadgay', 'amigosgay'],
   };
 
   static const List<String> _countryKeywords = [
@@ -350,6 +360,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     result.sort((a, b) => b.users.compareTo(a.users));
     return result.take(10).toList();
   }
+  Future<void> _confirmDisconnect() async {
+    final shouldDisconnect = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Desconectar'),
+        content: const Text('¿Deseas desconectarte del chat?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Desconectar')),
+        ],
+      ),
+    );
+    if (shouldDisconnect == true) await controller.disconnect();
+  }
+
   Future<void> _showRoomExplorer() async {
     if (_catalogLoading) return;
     if (_channelCatalog.isEmpty && controller.connected) {
@@ -384,8 +409,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       children: [
                         Expanded(
                           child: Text(
-                            _country == null ? 'Explorar salas' : 'Salas de ${_country!.name}',
-                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                            'Salas de chats',
+                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF55C7FF)),
                           ),
                         ),
                         IconButton(
@@ -402,12 +427,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    const Text('Selecciona una categoría y entra a una sala que realmente esté disponible.'),
+                    const Text('Selecciona una categoría y entra a una sala que realmente esté disponible.', style: TextStyle(color: Color(0xFF9B7BFF))),
                     const SizedBox(height: 14),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: ['Países', ..._categoryKeywords.keys, 'General'].map((category) {
+                      children: ['Países', ..._categoryKeywords.keys, 'LGBT', 'General'].map((category) {
                         final active = category == selected;
                         return ChoiceChip(
                           label: Text(category),
@@ -575,48 +600,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     onPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
                   ),
                 ),
-                title: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const _JersIrcLogo(size: 24),
-                  const SizedBox(width: 7),
+                titleSpacing: 0,
+                title: Row(children: [
+                  const _JersIrcLogo(size: 21),
+                  const SizedBox(width: 4),
                   ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)],
-                    ).createShader(bounds),
-                    child: const Text(
-                      'JersIRC',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
-                    ),
+                    shaderCallback: (bounds) => const LinearGradient(colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)]).createShader(bounds),
+                    child: const Text('JersIRC', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
+                  Flexible(child: Text(nick.text.trim().isEmpty ? 'Nick' : nick.text.trim(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600))),
+                  const SizedBox(width: 4),
                   TextButton.icon(
                     onPressed: _showRoomExplorer,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)],
-                      ).createShader(bounds),
-                      child: const Icon(Icons.explore_outlined, size: 18, color: Colors.white),
-                    ),
-                    label: ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)],
-                      ).createShader(bounds),
-                      child: const Text(
-                        'SALAS',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
-                      ),
-                    ),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6), foregroundColor: const Color(0xFF9B7BFF), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                    icon: const Icon(Icons.explore_outlined, size: 17, color: Color(0xFF9B7BFF)),
+                    label: const Text('Salas', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF9B7BFF))),
                   ),
+                  IconButton(tooltip: 'Desconectar', onPressed: _confirmDisconnect, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 34, minHeight: 40), icon: const Icon(Icons.logout, size: 19)),
                 ]),
                 actions: [
-                  IconButton(
-                    tooltip: 'Ajustes',
-                    onPressed: () {},
-                    icon: const Icon(Icons.settings_outlined),
-                  ),
+                  IconButton(tooltip: 'Ajustes', onPressed: () => Scaffold.of(context).openDrawer(), icon: const Icon(Icons.settings_outlined)),
                 ],
               )
             : AppBar(
