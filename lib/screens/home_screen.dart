@@ -620,7 +620,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   IconButton(tooltip: 'Desconectar', onPressed: _confirmDisconnect, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 34, minHeight: 40), icon: const Icon(Icons.logout, size: 19)),
                 ]),
                 actions: [
-                  IconButton(tooltip: 'Ajustes', onPressed: () => Scaffold.of(context).openDrawer(), icon: const Icon(Icons.settings_outlined)),
+                  Builder(builder: (scaffoldContext) => IconButton(tooltip: 'Ajustes', onPressed: () => Scaffold.of(scaffoldContext).openDrawer(), icon: const Icon(Icons.settings_outlined))),
                 ],
               )
             : AppBar(
