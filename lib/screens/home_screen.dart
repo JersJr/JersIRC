@@ -676,11 +676,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ]),
                 actions: [
-                  IconButton(
-                    tooltip: 'Descubrir salas',
-                    onPressed: _showRoomExplorer,
-                    icon: const Icon(Icons.explore_outlined, color: Color(0xFF9B7BFF)),
-                  ),
+                  if (MediaQuery.of(context).size.width >= 600)
+                    TextButton.icon(
+                      onPressed: _showRoomExplorer,
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF9B7BFF),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      icon: const Icon(Icons.explore_outlined, size: 18),
+                      label: const Text('DESCUBRIR SALAS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                    )
+                  else
+                    IconButton(
+                      tooltip: 'DESCUBRIR SALAS',
+                      onPressed: _showRoomExplorer,
+                      icon: const Icon(Icons.explore_outlined, color: Color(0xFF9B7BFF)),
+                    ),
                   Builder(
                     builder: (scaffoldContext) => _PrivateAppBarButton(
                       unreadCount: _privateUnreadTotal(),
