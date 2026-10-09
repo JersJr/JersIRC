@@ -7,6 +7,7 @@ import 'models.dart';
 class JersStorage {
   static const _serversKey = 'jersirc_servers';
   static const _lastServerKey = 'jersirc_last_server';
+  static const _lastNicknameKey = 'jersirc_last_nickname';
 
   Future<List<SavedServer>> loadServers() async {
     final preferences = await SharedPreferences.getInstance();
@@ -64,6 +65,16 @@ class JersStorage {
   Future<String?> getLastServer() async {
     final preferences = await SharedPreferences.getInstance();
     return preferences.getString(_lastServerKey);
+  }
+
+  Future<void> saveLastNickname(String nickname) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_lastNicknameKey, nickname.trim());
+  }
+
+  Future<String?> getLastNickname() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getString(_lastNicknameKey);
   }
 
   Future<void> clearLastServer() async {
