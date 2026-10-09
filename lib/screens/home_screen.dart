@@ -681,14 +681,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     onPressed: _showRoomExplorer,
                     icon: const Icon(Icons.explore_outlined, color: Color(0xFF9B7BFF)),
                   ),
-                  _PrivateAppBarButton(
-                    unreadCount: _privateUnreadTotal(),
-                    onPressed: () => Scaffold.of(context).openDrawer(),
+                  Builder(
+                    builder: (scaffoldContext) => _PrivateAppBarButton(
+                      unreadCount: _privateUnreadTotal(),
+                      onPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: 'Configuración avanzada',
-                    onPressed: () => Scaffold.of(context).openDrawer(),
-                    icon: const Icon(Icons.settings_outlined),
+                  Builder(
+                    builder: (scaffoldContext) => IconButton(
+                      tooltip: 'Configuración avanzada',
+                      onPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
+                      icon: const Icon(Icons.settings_outlined),
+                    ),
                   ),
                   IconButton(
                     tooltip: 'Desconectar',
