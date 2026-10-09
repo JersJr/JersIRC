@@ -301,21 +301,78 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return RegExp(r'(^|\s)' + RegExp.escape(target) + r'(\s|$)').hasMatch(source);
   }
 
+  // Nombres habituales de salas por país. Se usa el código ISO detectado por IP
+  // para contemplar que el servidor puede nombrarlas en español o en inglés.
+  static const Map<String, List<String>> _countryRoomAliases = {
+    'ES': ['espana', 'spain'],
+    'DE': ['alemania', 'germany', 'deutschland'],
+    'US': ['estadosunidos', 'unitedstates', 'usa', 'america'],
+    'GB': ['reinounido', 'unitedkingdom', 'uk', 'britain'],
+    'FR': ['francia', 'france'],
+    'IT': ['italia', 'italy'],
+    'PT': ['portugal'],
+    'MX': ['mexico'],
+    'DO': ['republicadominicana', 'dominicanrepublic'],
+    'CR': ['costarica'],
+    'SV': ['elsalvador'],
+    'NL': ['paisesbajos', 'netherlands', 'holland'],
+    'BR': ['brasil', 'brazil'],
+    'CH': ['suiza', 'switzerland'],
+    'BE': ['belgica', 'belgium'],
+    'JP': ['japon', 'japan'],
+    'KR': ['coreadelsur', 'southkorea', 'korea'],
+    'CA': ['canada'],
+    'AR': ['argentina'],
+    'CL': ['chile'],
+    'CO': ['colombia'],
+    'PE': ['peru'],
+    'PA': ['panama'],
+    'VE': ['venezuela'],
+    'EC': ['ecuador'],
+    'UY': ['uruguay'],
+    'PY': ['paraguay'],
+    'BO': ['bolivia'],
+    'GT': ['guatemala'],
+    'HN': ['honduras'],
+    'NI': ['nicaragua'],
+    'CU': ['cuba'],
+    'PR': ['puertorico'],
+    'AU': ['australia'],
+    'IE': ['irlanda', 'ireland'],
+    'RU': ['rusia', 'russia'],
+    'UA': ['ucrania', 'ukraine'],
+    'SE': ['suecia', 'sweden'],
+    'NO': ['noruega', 'norway'],
+    'DK': ['dinamarca', 'denmark'],
+    'PL': ['polonia', 'poland'],
+    'GR': ['grecia', 'greece'],
+    'TR': ['turquia', 'turkey'],
+    'MA': ['marruecos', 'morocco'],
+    'IN': ['india'],
+    'CN': ['china'],
+    'JP': ['japon', 'japan'],
+  };
+
   IrcChannelInfo? _defaultCountryRoom(List<IrcChannelInfo> channels, DetectedCountry? country) {
     if (country == null) return null;
-    final countryName = _normalize(country.name).trim();
-    final code = _normalize(country.code).trim();
-    if (countryName.isEmpty) return null;
-    // Solo el NOMBRE de la sala decide el ingreso automático. Nunca el topic.
+    final countryName = _normalize(country.name).replaceAll(' ', '').trim();
+    final code = country.code.trim().toUpperCase();
+    final candidates = <String>{
+      if (countryName.isNotEmpty) countryName,
+      if (code.isNotEmpty) code.toLowerCase(),
+      ...?_countryRoomAliases[code]?.map(
+        (alias) => _normalize(alias).replaceAll(' ', '').trim(),
+      ),
+    };
+    if (candidates.isEmpty) return null;
+
+    // Solo el nombre de la sala decide el ingreso automático, nunca el topic.
+    // La coincidencia es exacta para no entrar por error a salas temáticas.
     for (final info in channels) {
-      final name = _normalize(info.channel.replaceFirst(RegExp(r'^[#&+!]'), '')).trim();
-      if (name == countryName) return info;
-    }
-    if (code.length >= 2) {
-      for (final info in channels) {
-        final name = _normalize(info.channel.replaceFirst(RegExp(r'^[#&+!]'), '')).trim();
-        if (name == code) return info;
-      }
+      final name = _normalize(
+        info.channel.replaceFirst(RegExp(r'^[#&+!]'), ''),
+      ).replaceAll(' ', '').trim();
+      if (candidates.contains(name)) return info;
     }
     return null;
   }
