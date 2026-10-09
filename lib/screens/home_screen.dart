@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../controllers/irc_controller.dart';
-import '../models/chat_room.dart';
 import '../models.dart';
 import '../storage.dart';
 import '../widgets/user_action_sheet.dart';
@@ -350,7 +349,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     'MA': ['marruecos', 'morocco'],
     'IN': ['india'],
     'CN': ['china'],
-    'JP': ['japon', 'japan'],
   };
 
   IrcChannelInfo? _defaultCountryRoom(List<IrcChannelInfo> channels, DetectedCountry? country) {
