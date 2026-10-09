@@ -21,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final message = TextEditingController();
   final messageFocus = FocusNode();
   final scroll = ScrollController();
-  bool secure = false, usersVisible = true, privateVisible = false, nicknameDialogOpen = false, banDialogOpen = false;
+  bool secure = false, usersVisible = true, nicknameDialogOpen = false, banDialogOpen = false;
   List<SavedServer> savedServers = [];
   String? selectedProfile;
   ChatRoomModel? get room => controller.currentRoom;
@@ -1064,57 +1064,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Text('${r.users.length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
         ])),
       ));
-
-  Widget _privateSidebar() {
-    final privates = _privateRooms();
-    return Container(
-      width: 148,
-      decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),
-      child: Column(children: [
-        Padding(padding: const EdgeInsets.fromLTRB(7, 5, 4, 2), child: Row(children: [
-          Expanded(child: Text('PRIVADOS · ${privates.length}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54))),
-          IconButton(onPressed: () => setState(() => privateVisible = false), icon: const Icon(Icons.keyboard_double_arrow_right, size: 17), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28)),
-        ])),
-        Expanded(
-          child: privates.isEmpty
-              ? const Center(child: Padding(padding: EdgeInsets.all(8), child: Text('Sin privados', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11))))
-              : ListView(
-                  padding: const EdgeInsets.all(6),
-                  children: privates.map((r) => ListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 2),
-                    selected: r.name == controller.activeRoom,
-                    leading: Icon(Icons.person_outline, size: 17, color: _nickColor(r.name)),
-                    title: r.unread > 0 && r.name != controller.activeRoom
-                        ? _BlinkingUnread(label: Text(r.name), count: r.unread, color: _nickColor(r.name))
-                        : Text(r.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(r.name), fontWeight: FontWeight.w600)),
-                    onTap: () => _openPrivateRoom(r.name),
-                    trailing: IconButton(icon: const Icon(Icons.close, size: 15), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28), onPressed: () => _closeRoom(r.name)),
-                  )).toList(),
-                ),
-        ),
-      ]),
-    );
-  }
-
-  Widget _collapsedPrivateSidebar() => Material(
-        color: const Color(0xFF151B22),
-        child: InkWell(
-          onTap: () => setState(() => privateVisible = true),
-          child: SizedBox(
-            width: 44,
-            child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
-              const SizedBox(height: 8),
-              const Icon(Icons.chat_bubble_outline, size: 20),
-              const SizedBox(height: 4),
-              if (_privateUnreadTotal() > 0)
-                Text('${_privateUnreadTotal()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))
-              else
-                Text('${_privateRooms().length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-            ]),
-          ),
-        ),
-      );
 
   Widget _composer() => SafeArea(child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
