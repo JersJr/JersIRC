@@ -649,33 +649,53 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         appBar: controller.connected
             ? AppBar(
                 backgroundColor: const Color(0xFF111820),
-                leading: Builder(
-                  builder: (scaffoldContext) => _PrivateAppBarButton(
-                    unreadCount: _privateUnreadTotal(),
-                    onPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
-                  ),
-                ),
+                leading: const SizedBox(width: 8),
                 titleSpacing: 0,
-                title: Row(children: [
-                  const _JersIrcLogo(size: 21),
-                  const SizedBox(width: 4),
-                  ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)]).createShader(bounds),
-                    child: const Text('JersIRC', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+                title: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const _JersIrcLogo(size: 24),
+                  const SizedBox(width: 7),
+                  Flexible(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)],
+                          ).createShader(bounds),
+                          child: const Text('JersIRC', style: TextStyle(fontSize: 14, height: 1.1, fontWeight: FontWeight.w800, color: Colors.white)),
+                        ),
+                        Text(
+                          nick.text.trim().isEmpty ? 'Nick' : nick.text.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 10, height: 1.2, color: Colors.white60, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  Flexible(child: Text(nick.text.trim().isEmpty ? 'Nick' : nick.text.trim(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600))),
-                  const SizedBox(width: 4),
-                  TextButton.icon(
-                    onPressed: _showRoomExplorer,
-                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6), foregroundColor: const Color(0xFF9B7BFF), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                    icon: const Icon(Icons.explore_outlined, size: 17, color: Color(0xFF9B7BFF)),
-                    label: const Text('Salas', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF9B7BFF))),
-                  ),
-                  IconButton(tooltip: 'Desconectar', onPressed: _confirmDisconnect, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 34, minHeight: 40), icon: const Icon(Icons.logout, size: 19)),
                 ]),
                 actions: [
-                  Builder(builder: (scaffoldContext) => IconButton(tooltip: 'Ajustes', onPressed: () => Scaffold.of(scaffoldContext).openDrawer(), icon: const Icon(Icons.settings_outlined))),
+                  IconButton(
+                    tooltip: 'Descubrir salas',
+                    onPressed: _showRoomExplorer,
+                    icon: const Icon(Icons.explore_outlined, color: Color(0xFF9B7BFF)),
+                  ),
+                  _PrivateAppBarButton(
+                    unreadCount: _privateUnreadTotal(),
+                    onPressed: () => Scaffold.of(context).openDrawer(),
+                  ),
+                  IconButton(
+                    tooltip: 'Configuración avanzada',
+                    onPressed: () => Scaffold.of(context).openDrawer(),
+                    icon: const Icon(Icons.settings_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Desconectar',
+                    onPressed: _confirmDisconnect,
+                    icon: const Icon(Icons.logout_rounded, size: 19),
+                  ),
+                  const SizedBox(width: 4),
                 ],
               )
             : AppBar(
@@ -691,7 +711,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (room != null) _tabs(),
           Expanded(child: Row(children: [
             Expanded(child: room == null ? _welcome() : _chat(room!)),
-            if (room != null && !room!.privateChat) usersVisible ? _users(room!) : _collapsedUsers(room!),
+            if (room != null && !room!.privateChat)
+              usersVisible ? _users(room!) : _collapsedUsers(room!)
+            else if (room != null && room!.privateChat)
+              privateVisible ? _privateSidebar() : _collapsedPrivateSidebar(),
           ])),
           if (room != null) _composer(),
         ]),
@@ -775,8 +798,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Center(child: Text('CN.PV', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
-              const Center(child: Text('Cambiar nick y Privados', style: TextStyle(color: Colors.white54))),
+              const Center(child: Text('Configuración avanzada', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
+              const Center(child: Text('Nickname y conversaciones privadas', style: TextStyle(color: Colors.white54))),
               const SizedBox(height: 22),
               const Text('CAMBIAR DE NICK', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
               const SizedBox(height: 8),
@@ -801,7 +824,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ]),
               const SizedBox(height: 18),
-              const Text('PV', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
+              const Text('CONVERSACIONES PRIVADAS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
               const SizedBox(height: 8),
               Builder(
                 builder: (_) {
@@ -940,10 +963,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _chat(ChatRoomModel r) => Column(children: [
+    Container(
+      width: double.infinity,
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: const BoxDecoration(
+        color: Color(0xFF151B22),
+        border: Border(bottom: BorderSide(color: Colors.white10)),
+      ),
+      child: Row(children: [
+        Icon(r.privateChat ? Icons.person_outline_rounded : Icons.tag_rounded,
+            size: 17, color: r.privateChat ? const Color(0xFF9B7BFF) : const Color(0xFF55C7FF)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            r.privateChat ? 'Chat privado · ${r.name}' : r.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+          ),
+        ),
+        if (!r.privateChat) ...[
+          const Icon(Icons.people_alt_outlined, size: 15, color: Colors.white54),
+          const SizedBox(width: 5),
+          Text('${r.users.length}', style: const TextStyle(fontSize: 11, color: Colors.white60)),
+        ] else
+          const Text('Mensaje directo', style: TextStyle(fontSize: 10, color: Colors.white54)),
+      ]),
+    ),
     if (!controller.connected)
       Container(width: double.infinity, padding: const EdgeInsets.all(6), color: Colors.orange.withOpacity(.12), child: Text(controller.status, style: const TextStyle(fontSize: 12))),
     Expanded(child: r.messages.isEmpty
-      ? Center(child: Text(r.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)))
+      ? Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(r.privateChat ? Icons.forum_outlined : Icons.tag_rounded, size: 30, color: Colors.white24),
+            const SizedBox(height: 8),
+            Text(r.privateChat ? 'Inicia una conversación con ${r.name}' : 'Sala ${r.name}', style: const TextStyle(fontSize: 14, color: Colors.white54)),
+          ]),
+        )
       : ListView.builder(
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
