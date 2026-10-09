@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../irc_client.dart';
 import '../models/chat_room.dart';
-import '../models/irc_message.dart';
 
 class IrcController extends ChangeNotifier {
   IrcController({IrcClient? client}) : client = client ?? IrcClient() {
@@ -157,7 +156,11 @@ class IrcController extends ChangeNotifier {
     final existingKey = rooms.keys.firstWhere((key) => key.toLowerCase() == roomName.toLowerCase(), orElse: () => '');
     final room = existingKey.isNotEmpty ? rooms[existingKey]! : rooms.putIfAbsent(roomName, () => ChatRoomModel(roomName, privateChat: !isChannel));
     room.messages.add(message);
-    if (activeRoom != room.name) room.unread++; else room.unread = 0;
+    if (activeRoom != room.name) {
+      room.unread++;
+    } else {
+      room.unread = 0;
+    }
     activeRoom ??= room.name;
   }
 
