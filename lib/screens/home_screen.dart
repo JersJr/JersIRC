@@ -583,7 +583,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  List<ChatRoomModel> _privateRooms() => controller.rooms.values.where((r) => r.privateChat).toList();
+  List<ChatRoomModel> _privateRooms() => controller.rooms.values.where((r) => r.privateChat && !controller.ignoredUsers.contains(r.name.toLowerCase())).toList();
   int _privateUnreadTotal() => _privateRooms().fold(0, (sum, r) => sum + r.unread);
 
   void _openPrivateRoom(String name) {
@@ -837,9 +837,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _privateChip(ChatRoomModel r) {
     final active = r.name == controller.activeRoom;
     final label = r.unread > 0 && !active ? '${r.name} (${r.unread})' : r.name;
+    final hasExchangedMessages = r.messages.any(
+      (m) => m.command == 'PRIVMSG' || m.command == 'NOTICE',
+    );
     return ActionChip(
       avatar: Icon(Icons.person_outline, size: 16, color: _nickColor(r.name)),
-      label: Text(label, overflow: TextOverflow.ellipsis),
+      label: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (hasExchangedMessages) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            margin: const EdgeInsets.only(right: 5),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2563EB),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text('DM', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white)),
+          ),
+        ],
+        Text(label, overflow: TextOverflow.ellipsis),
+      ]),
       backgroundColor: active ? const Color(0xFF53677D) : null,
       onPressed: () => _openPrivateRoom(r.name),
     );
@@ -1093,12 +1109,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Expanded(child: Text('USUARIOS · ${r.users.length}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54))),
             IconButton(onPressed: () => setState(() => usersVisible = false), icon: const Icon(Icons.keyboard_double_arrow_right, size: 17), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28)),
           ])),
-          Expanded(child: ListView(padding: const EdgeInsets.all(6), children: _sortedUsers(r).map((u) => ListTile(
-            dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 2),
-            title: Text('${u.prefixes}${u.nick}', overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(u.nick), fontWeight: FontWeight.w600)),
-            onTap: () => _showUserActions(u.nick),
-          )).toList())),
+          Expanded(child: ListView(padding: const EdgeInsets.all(6), children: _sortedUsers(r).map((u) {
+            final ignored = controller.ignoredUsers.contains(u.nick.toLowerCase());
+            return ListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 2),
+              title: Row(children: [
+                if (u.prefixes.isNotEmpty)
+                  Text(u.prefixes, style: TextStyle(color: _nickColor(u.nick), fontWeight: FontWeight.w600)),
+                if (ignored)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: Icon(Icons.block, size: 14, color: Colors.redAccent),
+                  ),
+                Expanded(child: Text(u.nick, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(u.nick), fontWeight: FontWeight.w600))),
+              ]),
+              onTap: () => _showUserActions(u.nick),
+            );
+          }).toList())),
         ]),
       );
 
