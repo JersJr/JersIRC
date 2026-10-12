@@ -11,7 +11,7 @@ void main() {
     androidNotificationOptions: AndroidNotificationOptions(
       channelId: 'jersirc_connection',
       channelName: 'Parloteo',
-      channelDescription: 'Mantiene activa la conexión de chat de Parloteo.'
+      channelDescription: 'Mantiene activa la conexión de chat de Parloteo.',
       channelImportance: NotificationChannelImportance.LOW,
       onlyAlertOnce: true,
     ),
