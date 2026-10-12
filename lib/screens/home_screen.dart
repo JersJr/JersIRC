@@ -448,6 +448,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (!mounted) return;
     String selected = 'Países';
+    final roomEntry = TextEditingController();
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -488,10 +489,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     const SizedBox(height: 6),
                     const Text('Selecciona una categoría y entra a una sala que realmente esté disponible.', style: TextStyle(color: Color(0xFF9B7BFF))),
                     const SizedBox(height: 14),
+                    TextField(
+                      controller: roomEntry,
+                      textInputAction: TextInputAction.join,
+                      onSubmitted: (value) => _submitExplorerRoom(value, sheetContext),
+                      decoration: InputDecoration(
+                        hintText: 'Escribe un # seguido de la sala, ejemplo #Juegos',
+                        prefixIcon: const Icon(Icons.tag),
+                        suffixIcon: IconButton(
+                          tooltip: 'Entrar a la sala',
+                          onPressed: () => _submitExplorerRoom(roomEntry.text, sheetContext),
+                          icon: const Icon(Icons.arrow_forward),
+                        ),
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: ['Países', ..._categoryKeywords.keys, 'LGBT', 'General'].map((category) {
+                      children: ['Países', ..._categoryKeywords.keys, 'General'].map((category) {
                         final active = category == selected;
                         return ChoiceChip(
                           label: Text(category),
@@ -531,6 +548,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       ),
     );
+    roomEntry.dispose();
+  }
+
+  void _submitExplorerRoom(String value, BuildContext sheetContext) {
+    final name = value.trim();
+    if (name.isEmpty) return;
+    if (!name.startsWith('#')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('La sala debe comenzar con #, por ejemplo #Juegos')),
+      );
+      return;
+    }
+    if (name.length < 2 || name.substring(1).contains(RegExp(r'\\s'))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Escribe un nombre de sala válido, por ejemplo #Juegos')),
+      );
+      return;
+    }
+    final existing = controller.rooms.keys.firstWhere(
+      (key) => key.toLowerCase() == name.toLowerCase(),
+      orElse: () => '',
+    );
+    Navigator.pop(sheetContext);
+    if (existing.isNotEmpty) {
+      controller.activeRoom = existing;
+      controller.rooms[existing]?.unread = 0;
+      setState(() {});
+      _scrollBottom();
+    } else {
+      channel.text = name;
+      controller.join(name);
+      setState(() {});
+    }
   }
 
   List<ChatRoomModel> _privateRooms() => controller.rooms.values.where((r) => r.privateChat).toList();
@@ -681,23 +731,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ]),
                 actions: [
-                  if (MediaQuery.of(context).size.width >= 600)
-                    TextButton.icon(
-                      onPressed: _showRoomExplorer,
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF9B7BFF),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      icon: const Icon(Icons.explore_outlined, size: 18),
-                      label: const Text('Explorar salas', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
-                    )
-                  else
-                    IconButton(
-                      tooltip: 'Explorar salas',
-                      onPressed: _showRoomExplorer,
-                      icon: const Icon(Icons.explore_outlined, color: Color(0xFF9B7BFF)),
+                  TextButton.icon(
+                    onPressed: _showRoomExplorer,
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF9B7BFF),
+                      padding: EdgeInsets.symmetric(horizontal: MediaQuery.of(context).size.width >= 600 ? 8 : 4),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
+                    icon: const Icon(Icons.explore_outlined, size: 18),
+                    label: Text(
+                      MediaQuery.of(context).size.width >= 600 ? 'Explorar salas' : 'Salas',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                    ),
+                  ),
                   Builder(
                     builder: (scaffoldContext) => _PrivateAppBarButton(
                       unreadCount: _privateUnreadTotal(),
@@ -817,10 +863,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Center(child: Text('Cambio de nick', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
-              const SizedBox(height: 22),
-              const Text('Cambio de nick', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
-              const SizedBox(height: 8),
+              const Text('Cambio de nick', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
               Row(children: [
                 Expanded(
                   child: TextField(
@@ -842,7 +886,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ]),
               const SizedBox(height: 18),
-              const Text('Privados', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
+              const Text('Privados', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
               Builder(
                 builder: (_) {
@@ -1016,6 +1060,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           itemCount: r.messages.length,
           itemBuilder: (context, i) {
             final m = r.messages[i];
+            if (m.command == 'DISCONNECTED_USER') {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Text(
+                  ${_clean(m.trailing)},
+                  style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
+                ),
+              );
+            }
             final user = m.nick ?? 'Sistema';
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 5),
