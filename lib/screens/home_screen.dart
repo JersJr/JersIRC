@@ -745,9 +745,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _showModerationActivity() async {
     await showDialog<void>(context: context, builder: (_) => AlertDialog(
       title: const Text('Actividad de moderación'),
-      content: SizedBox(width: 420, height: 420, child: controller.moderationActivity.isEmpty
-        ? const Center(child: Text('Todavía no hay actividad registrada.'))
-        : ListView.builder(itemCount: controller.moderationActivity.length, itemBuilder: (_, i) => Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(controller.moderationActivity[i])))),
+      content: SizedBox(width: 420, height: 420, child: AnimatedBuilder(
+        animation: controller,
+        builder: (_, __) => controller.moderationActivity.isEmpty
+          ? const Center(child: Text('Todavía no hay actividad registrada.'))
+          : ListView.builder(itemCount: controller.moderationActivity.length, itemBuilder: (_, i) => Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(controller.moderationActivity[i]))),
+      )),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar'))],
     ));
   }
