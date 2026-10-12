@@ -31,6 +31,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<IrcChannelInfo> _channelCatalog = const [];
   bool _webChatEntry = false;
   bool _catalogLoading = false;
+  bool _operatorToolsEnabled = false;
+  String? _lastWhoisNotice;
+
+  bool get _hasOperatorRank {
+    final active = room;
+    if (active == null || active.privateChat) return false;
+    final me = active.users.entries.where((e) => e.key.toLowerCase() == nick.text.trim().toLowerCase()).map((e) => e.value.prefixes).firstOrNull ?? '';
+    return me.contains('@') || me.contains('~') || me.contains('&');
+  }
+
+  bool get _operatorToolsAvailable => _operatorToolsEnabled && _hasOperatorRank;
 
   @override
   void initState() {
@@ -55,6 +66,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } else if (!controller.connected && _isBanError(controller.status) && !banDialogOpen) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !controller.connected && !banDialogOpen && _isBanError(controller.status)) _showBanError();
+      });
+    }
+    final whois = controller.whoisNotice;
+    if (whois != null && whois != _lastWhoisNotice) {
+      _lastWhoisNotice = whois;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showWhoisNotice(whois);
       });
     }
     if (!controller.connected && _isNicknameError(controller.status) && !nicknameDialogOpen) {
@@ -635,6 +653,65 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     messageFocus.requestFocus();
   }
 
+  Future<void> _confirmAdvancedSettings() async {
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded, color: Colors.amber),
+        title: const Text('Configuraciones avanzadas'),
+        content: const Text('Estos cambios pueden ser permanentes y afectar tu experiencia en el chat. Si no conoces su funcionamiento, podrías perjudicar tu experiencia. ¿Deseas continuar?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Continuar')),
+        ],
+      ),
+    );
+    if (proceed == true && mounted) Scaffold.of(context).openEndDrawer();
+  }
+
+  Widget _settingsDrawer() => Drawer(
+    width: MediaQuery.sizeOf(context).width * .86 > 390 ? 390 : MediaQuery.sizeOf(context).width * .86,
+    backgroundColor: const Color(0xFF151B22),
+    child: SafeArea(child: ListView(padding: const EdgeInsets.all(16), children: [
+      const Row(children: [Icon(Icons.settings_outlined, color: Color(0xFF9B7BFF)), SizedBox(width: 10), Text('Configuraciones', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold))]),
+      const SizedBox(height: 18),
+      SwitchListTile.adaptive(
+        contentPadding: EdgeInsets.zero,
+        value: controller.ignorePrivateMessages,
+        title: const Text('Ignorar privados'),
+        subtitle: const Text('Oculta los mensajes privados entrantes sin bloquear a sus remitentes.'),
+        secondary: const Icon(Icons.mark_chat_unread_outlined),
+        onChanged: (value) => setState(() => controller.setIgnorePrivateMessages(value)),
+      ),
+      const Divider(height: 28),
+      const Text('CONEXIÓN', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white54, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 10),
+      ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.dns_outlined), title: const Text('Servidor'), subtitle: Text(host.text.trim().isEmpty ? '—' : host.text.trim())),
+      ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.settings_ethernet), title: const Text('Puerto'), subtitle: Text('${port.text.trim()}${secure ? ' · TLS' : ' · sin TLS'}')),
+      ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.tag), title: const Text('Sala y rango actual'), subtitle: Text('${room?.name ?? 'Sin sala'} · ${_hasOperatorRank ? 'Operador' : 'Sin rango OP detectado'}')),
+      const Divider(height: 28),
+      const Text('MODERACIÓN', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white54, fontWeight: FontWeight.bold)),
+      SwitchListTile.adaptive(
+        contentPadding: EdgeInsets.zero,
+        value: _operatorToolsEnabled,
+        title: const Text('Modo Operador'),
+        subtitle: Text(_operatorToolsAvailable ? 'Rango de operador detectado en esta sala.' : _operatorToolsEnabled ? 'Activado, pero no se detecta rango OP en la sala actual.' : 'Muestra herramientas adicionales cuando tengas rango OP.'),
+        secondary: const Icon(Icons.admin_panel_settings_outlined),
+        onChanged: (value) => setState(() => _operatorToolsEnabled = value),
+      ),
+      if (_operatorToolsEnabled && !_hasOperatorRank)
+        const Padding(padding: EdgeInsets.only(left: 4, right: 4, bottom: 12), child: Text('Las acciones de moderación solo estarán disponibles cuando el servidor te conceda rango de operador (@) en una sala.', style: TextStyle(color: Colors.amber, fontSize: 12))),
+    ])),
+  );
+
+  Future<void> _showWhoisNotice(String details) async {
+    await showDialog<void>(context: context, builder: (_) => AlertDialog(
+      title: const Text('Información WHOIS'),
+      content: SingleChildScrollView(child: SelectableText(details)),
+      actions: [TextButton(onPressed: () { controller.clearWhoisNotice(); _lastWhoisNotice = null; Navigator.pop(context); }, child: const Text('Cerrar'))],
+    ));
+  }
+
   void _showUserActions(String nickname) {
     final ignored = controller.ignoredUsers.contains(nickname.toLowerCase());
     showModalBottomSheet<void>(
@@ -646,8 +723,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         isIgnored: ignored,
         onPrivate: () => controller.openPrivate(nickname),
         onMention: () => _mentionUser(nickname),
-        onWhois: () => controller.client.send('WHOIS $nickname'),
+        isOperator: _operatorToolsAvailable,
+        onWhois: () => controller.requestWhois(nickname),
         onIgnore: () => controller.toggleIgnore(nickname),
+        onBanNick: () { final target = room?.name; if (target != null && target.startsWith('#')) controller.banNickname(target, nickname); },
+        onBanHost: () { final target = room?.name; if (target != null && target.startsWith('#')) controller.banVirtualHost(target, nickname); },
         onMode: (mode) {
           final target = room?.name;
           if (target != null && target.startsWith('#')) controller.client.send('MODE $target $mode $nickname');
@@ -753,7 +833,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   Builder(
                     builder: (scaffoldContext) => IconButton(
                       tooltip: 'Opciones',
-                      onPressed: () {}, // Reservado para una futura función.
+                      onPressed: () => _confirmAdvancedSettings(),
                       icon: const Icon(Icons.settings_outlined),
                     ),
                   ),
@@ -774,6 +854,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ]),
               ),
         drawer: controller.connected ? _drawer() : null,
+        endDrawer: controller.connected ? _settingsDrawer() : null,
         body: Column(children: [
           if (room != null) _tabs(),
           Expanded(child: Row(children: [
