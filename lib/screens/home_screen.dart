@@ -728,7 +728,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (_operatorToolsAvailable && room != null && !room!.privateChat) ...[
         const Divider(height: 28),
         const Text('HERRAMIENTAS DE SALA', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white54, fontWeight: FontWeight.bold)),
-        ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.history), title: const Text('Actividad de moderación'), subtitle: const Text('Entradas, salidas y bans'), onTap: () { Navigator.pop(context); _showModerationActivity(); }),
         ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.block_outlined), title: const Text('Lista de bans'), subtitle: const Text('Consultar y retirar bans de esta sala'), onTap: () { Navigator.pop(context); _showBanList(); }),
       ],
     ])),
@@ -764,7 +763,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _showModerationActivity() async {
     await showDialog<void>(context: context, builder: (_) => AlertDialog(
-      title: const Text('Actividad de moderación'),
       content: SizedBox(width: 420, height: 420, child: AnimatedBuilder(
         animation: controller,
         builder: (_, __) => controller.moderationActivity.isEmpty
@@ -1273,12 +1271,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             if (m.command == 'SYSTEM') {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Center(
-                  child: Text(
-                    _clean(m.trailing),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white54, fontSize: 12, fontStyle: FontStyle.italic),
-                  ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _clean(m.trailing),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white54, fontSize: 12, fontStyle: FontStyle.italic),
+                      ),
+                    ),
+                    if (controller.showActivityNotifications)
+                      TextButton(
+                        onPressed: () async {
+                          controller.setShowActivityNotifications(false);
+                          await storage.setShowActivityNotifications(false);
+                          if (mounted) setState(() {});
+                        },
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        child: const Text(
+                          'No avisar más',
+                          style: TextStyle(fontSize: 10, color: Colors.white54),
+                        ),
+                      ),
+                  ],
                 ),
               );
             }
