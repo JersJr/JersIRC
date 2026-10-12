@@ -165,15 +165,14 @@ jobs:
           path = Path('lib/screens/home_screen.dart')
           text = path.read_text(encoding='utf-8')
 
-          import_line = "import '../nickname_generator.dart';\n"
-          anchor = "import '../controllers/irc_controller.dart';\n"
-          if import_line not in text and text.count(anchor) == 1:
-              text = text.replace(anchor, anchor + import_line, 1)
-
           old_nick = "  final nick = TextEditingController(text: 'JersIRC_User');"
           new_nick = "  final nick = TextEditingController(text: NicknameGenerator.generate());"
           if text.count(old_nick) == 1:
               text = text.replace(old_nick, new_nick, 1)
+              import_line = "import '../nickname_generator.dart';\n"
+              anchor = "import '../controllers/irc_controller.dart';\n"
+              if import_line not in text and text.count(anchor) == 1:
+                  text = text.replace(anchor, anchor + import_line, 1)
 
           text = text.replace("                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname')),\n", "                Expanded(child: TextField(controller: nick, decoration: const InputDecoration(labelText: 'Nickname'))),\n", 1)
 
