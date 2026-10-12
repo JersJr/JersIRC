@@ -143,15 +143,19 @@ class IrcController extends ChangeNotifier {
     if (moderationActivity.length > 200) moderationActivity.removeLast();
   }
 
+  ChatRoomModel? _findRoom(String channel) {
+    for (final entry in rooms.entries) {
+      if (entry.key.toLowerCase() == channel.toLowerCase()) return entry.value;
+    }
+    return null;
+  }
+
+  bool _roomContainsUser(ChatRoomModel room, String nickname) =>
+      room.users.keys.any((nick) => nick.toLowerCase() == nickname.toLowerCase());
+
   void _addSystemEvent(String channel, String text) {
     if (!showActivityNotifications || channel.isEmpty || text.trim().isEmpty) return;
-    ChatRoomModel? room;
-    for (final entry in rooms.entries) {
-      if (entry.key.toLowerCase() == channel.toLowerCase()) {
-        room = entry.value;
-        break;
-      }
-    }
+    final room = _findRoom(channel);
     if (room == null || room.privateChat) return;
     room.messages.add(IrcMessage('', null, 'SYSTEM', [channel, text]));
     if (activeRoom != room.name) room.unread++;
@@ -299,11 +303,11 @@ class IrcController extends ChangeNotifier {
       }
     }
     final sender = message.nick;
-    if (message.command == 'JOIN' && message.params.isNotEmpty && sender != null) { final channel = message.params.last; final room = rooms.putIfAbsent(channel, () => ChatRoomModel(channel)); room.addUser(sender); _disconnectedUsers.remove(sender.toLowerCase()); if (_sameNick(sender, _lastNickname)) { activeRoom ??= channel; room.unread = 0; } else { _logModeration('$sender entró en $channel'); _addSystemEvent(channel, '$sender entró en la sala'); } }
-    if (message.command == 'PART' && message.params.isNotEmpty && sender != null) { final channel = message.params.first; final room = rooms[channel]; room?.removeUser(sender); _logModeration('$sender salió de $channel'); if (!_sameNick(sender, _lastNickname)) _addSystemEvent(channel, '$sender salió de la sala'); if (_sameNick(sender, _lastNickname)) { _cancelTemporaryBanTimers(channel: channel); rooms.remove(channel); if (activeRoom == channel) activeRoom = rooms.isEmpty ? null : rooms.keys.first; } }
-    if (message.command == 'QUIT' && sender != null) { _disconnectedUsers.add(sender.toLowerCase()); for (final room in rooms.values) { room.removeUser(sender); if (!room.privateChat) _addSystemEvent(room.name, '$sender se desconectó${message.trailing.isNotEmpty ? ' (${message.trailing})' : ''}'); } _logModeration('$sender se desconectó (${message.trailing})'); }
+    if (message.command == 'JOIN' && message.params.isNotEmpty && sender != null) { final channel = message.params.last; final room = _findRoom(channel) ?? ( _sameNick(sender, _lastNickname) ? rooms.putIfAbsent(channel, () => ChatRoomModel(channel)) : null ); if (room != null) { room.addUser(sender); _disconnectedUsers.remove(sender.toLowerCase()); if (_sameNick(sender, _lastNickname)) { activeRoom ??= room.name; room.unread = 0; } else { _logModeration('$sender entró en ${room.name}'); _addSystemEvent(room.name, '$sender entró en la sala'); } } }
+    if (message.command == 'PART' && message.params.isNotEmpty && sender != null) { final channel = message.params.first; final room = _findRoom(channel); room?.removeUser(sender); _logModeration('$sender salió de $channel'); if (!_sameNick(sender, _lastNickname) && room != null) _addSystemEvent(room.name, '$sender salió de la sala'); if (_sameNick(sender, _lastNickname)) { _cancelTemporaryBanTimers(channel: channel); final key = rooms.keys.firstWhere((name) => name.toLowerCase() == channel.toLowerCase(), orElse: () => ''); if (key.isNotEmpty) rooms.remove(key); if (activeRoom?.toLowerCase() == channel.toLowerCase()) activeRoom = rooms.isEmpty ? null : rooms.keys.first; } }
+    if (message.command == 'QUIT' && sender != null) { _disconnectedUsers.add(sender.toLowerCase()); for (final room in rooms.values) { final wasInRoom = _roomContainsUser(room, sender); if (wasInRoom) { room.removeUser(sender); if (!room.privateChat) _addSystemEvent(room.name, '$sender se desconectó${message.trailing.isNotEmpty ? ' (${message.trailing})' : ''}'); } } _logModeration('$sender se desconectó (${message.trailing})'); }
     if (message.command == 'NICK' && sender != null && message.params.isNotEmpty) { final newNick = message.params.last; if (_disconnectedUsers.remove(sender.toLowerCase())) _disconnectedUsers.add(newNick.toLowerCase()); for (final room in rooms.values) { room.renameUser(sender, newNick); } if (_sameNick(sender, _lastNickname)) { _lastNickname = newNick; status = 'Nickname: $newNick'; } }
-    if (message.command == 'KICK' && message.params.length >= 2) { final channel = message.params.first; final kicked = message.params[1]; rooms[channel]?.removeUser(kicked); _addSystemEvent(channel, '$kicked fue expulsado por ${sender ?? 'operador'}${message.trailing.isNotEmpty ? ': ${message.trailing}' : ''}'); _logModeration('$kicked recibió kick en $channel por ${sender ?? 'operador'}: ${message.trailing}'); if (_sameNick(kicked, _lastNickname)) { rooms.remove(channel); if (activeRoom == channel) activeRoom = rooms.isEmpty ? null : rooms.keys.first; status = 'Expulsado de $channel'; } }
+    if (message.command == 'KICK' && message.params.length >= 2) { final channel = message.params.first; final kicked = message.params[1]; final room = _findRoom(channel); room?.removeUser(kicked); if (room != null) _addSystemEvent(room.name, '$kicked fue expulsado por ${sender ?? 'operador'}${message.trailing.isNotEmpty ? ': ${message.trailing}' : ''}'); _logModeration('$kicked recibió kick en $channel por ${sender ?? 'operador'}: ${message.trailing}'); if (_sameNick(kicked, _lastNickname)) { final key = rooms.keys.firstWhere((name) => name.toLowerCase() == channel.toLowerCase(), orElse: () => ''); if (key.isNotEmpty) rooms.remove(key); if (activeRoom?.toLowerCase() == channel.toLowerCase()) activeRoom = rooms.isEmpty ? null : rooms.keys.first; status = 'Expulsado de $channel'; } }
     if (message.command == 'TOPIC' && message.params.isNotEmpty) { final room = rooms[message.params.first]; if (room != null) room.topic = message.trailing; }
     if (message.command == '332' && message.params.length >= 2) { final channel = message.params[1]; final room = rooms.putIfAbsent(channel, () => ChatRoomModel(channel)); room.topic = message.trailing; }
     if (message.command == '322' && message.params.length >= 4) {
@@ -367,7 +371,7 @@ class IrcController extends ChangeNotifier {
   bool _sameNick(String? a, String? b) => a != null && b != null && a.toLowerCase() == b.toLowerCase();
 
   void _applyUserModes(IrcMessage message) {
-    final target = message.params.first; if (!_isChannel(target)) return; final room = rooms[target]; if (room == null) return;
+    final target = message.params.first; if (!_isChannel(target)) return; final room = _findRoom(target); if (room == null) return;
     var adding = true; var arg = 2; const modeMap = {'q': '~', 'a': '&', 'o': '@', 'h': '%', 'v': '+'}; const modesWithArgument = {'q', 'a', 'o', 'h', 'v', 'b', 'e', 'I', 'k', 'l'};
     for (final mode in message.params[1].split('')) { if (mode == '+') { adding = true; continue; } if (mode == '-') { adding = false; continue; } if (!modesWithArgument.contains(mode)) continue; if (arg >= message.params.length) break; final value = message.params[arg++]; final prefix = modeMap[mode]; if (prefix == null) continue; var prefixes = room.users[value]?.prefixes ?? ''; if (adding && !prefixes.contains(prefix)) prefixes += prefix; if (!adding) prefixes = prefixes.replaceAll(prefix, ''); room.setUserPrefixes(value, prefixes); }
   }
