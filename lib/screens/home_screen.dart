@@ -13,6 +13,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   final controller = IrcController();
   final storage = JersStorage();
   final host = TextEditingController(text: 'irc.chateamos.org');
@@ -37,7 +38,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool get _hasOperatorRank {
     final active = room;
     if (active == null || active.privateChat) return false;
-    final me = active.users.entries.where((e) => e.key.toLowerCase() == nick.text.trim().toLowerCase()).map((e) => e.value.prefixes).firstOrNull ?? '';
+    var me = '';
+    for (final entry in active.users.entries) {
+      if (entry.key.toLowerCase() == nick.text.trim().toLowerCase()) { me = entry.value.prefixes; break; }
+    }
     return me.contains('@') || me.contains('~') || me.contains('&');
   }
 
@@ -666,7 +670,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       ),
     );
-    if (proceed == true && mounted) Scaffold.of(context).openEndDrawer();
+    if (proceed == true && mounted) _scaffoldKey.currentState?.openEndDrawer();
   }
 
   Widget _settingsDrawer() => Drawer(
@@ -780,6 +784,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+        key: _scaffoldKey,
         appBar: controller.connected
             ? AppBar(
                 backgroundColor: const Color(0xFF111820),
