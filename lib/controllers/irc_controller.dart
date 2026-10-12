@@ -172,7 +172,7 @@ class IrcController extends ChangeNotifier {
       if (numeric == 301) _whoisLines.add('Ausencia: ${message.trailing}');
       if (numeric == 318) {
         if (_whoisLines.isEmpty) _whoisLines.add('El servidor no proporcionó datos WHOIS adicionales.');
-        whoisNotice = 'Consulta de $_whoisTarget\\n\\n${_whoisLines.join('\\n')}';
+        whoisNotice = 'Consulta de $_whoisTarget\n\n${_whoisLines.join('\n')}';
         _whoisTarget = null;
         notifyListeners();
       }
