@@ -560,7 +560,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
       return;
     }
-    if (name.length < 2 || name.substring(1).contains(RegExp(r'\\s'))) {
+    if (name.length < 2 || name.substring(1).contains(RegExp(r'\s'))) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Escribe un nombre de sala válido, por ejemplo #Juegos')),
       );
