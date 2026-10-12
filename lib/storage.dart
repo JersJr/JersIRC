@@ -9,6 +9,7 @@ class JersStorage {
   static const _lastServerKey = 'jersirc_last_server';
   static const _lastNicknameKey = 'jersirc_last_nickname';
   static const _activityNotificationsKey = 'parloteo_show_activity_notifications';
+  static const _skipAdvancedWarningKey = 'parloteo_skip_advanced_warning';
 
   Future<List<SavedServer>> loadServers() async {
     final preferences = await SharedPreferences.getInstance();
@@ -86,6 +87,16 @@ class JersStorage {
   Future<void> setShowActivityNotifications(bool value) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool(_activityNotificationsKey, value);
+  }
+
+  Future<bool> getSkipAdvancedWarning() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getBool(_skipAdvancedWarningKey) ?? false;
+  }
+
+  Future<void> setSkipAdvancedWarning(bool value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_skipAdvancedWarningKey, value);
   }
 
   Future<void> clearLastServer() async {
