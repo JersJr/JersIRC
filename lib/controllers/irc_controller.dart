@@ -75,7 +75,15 @@ class IrcController extends ChangeNotifier {
     }
   }
 
-  Future<void> disconnect() async { manualDisconnect = true; _reconnectTimer?.cancel(); await client.disconnect(); connected = false; connecting = false; status = 'Desconectado'; notifyListeners(); }
+  void _cancelTemporaryBanTimers({String? channel}) {
+    final prefix = channel == null ? null : '${channel.toLowerCase()}|';
+    final keys = _temporaryBanTimers.keys.where((key) => prefix == null || key.startsWith(prefix)).toList();
+    for (final key in keys) {
+      _temporaryBanTimers.remove(key)?.cancel();
+    }
+  }
+
+  Future<void> disconnect() async { manualDisconnect = true; _reconnectTimer?.cancel(); _cancelTemporaryBanTimers(); await client.disconnect(); connected = false; connecting = false; status = 'Desconectado'; notifyListeners(); }
 
   void join(String channel) { final n = channel.trim(); if (!connected || n.isEmpty) return; rooms.putIfAbsent(n, () => ChatRoomModel(n)); activeRoom = n; rooms[n]!.unread = 0; client.join(n); notifyListeners(); }
   void openPrivate(String nickname) { final n = nickname.trim(); if (!connected || n.isEmpty || ignoredUsers.contains(n.toLowerCase())) return; final existing = rooms.keys.firstWhere((key) => key.toLowerCase() == n.toLowerCase(), orElse: () => ''); if (existing.isNotEmpty) { activeRoom = existing; rooms[existing]!.unread = 0; } else { rooms[n] = ChatRoomModel(n, privateChat: true); activeRoom = n; } notifyListeners(); }
@@ -210,7 +218,7 @@ class IrcController extends ChangeNotifier {
       banNotice = message.trailing.isEmpty ? 'Tu conexión ha sido bloqueada por el servidor.' : message.trailing; banIsServer = true; banChannel = null;
       status = 'Estás baneado del servidor'; notifyListeners(); return;
     }
-    if (message.command == 'DISCONNECTED') { connected = false; connecting = false; if (!manualDisconnect && !permanentConnectionFailure) { status = 'Conexión perdida'; notifyListeners(); _scheduleReconnectIfAllowed(); } else { notifyListeners(); } return; }
+    if (message.command == 'DISCONNECTED') { _cancelTemporaryBanTimers(); connected = false; connecting = false; if (!manualDisconnect && !permanentConnectionFailure) { status = 'Conexión perdida'; notifyListeners(); _scheduleReconnectIfAllowed(); } else { notifyListeners(); } return; }
     if (message.command == 'ERROR' || message.command == 'NOTICE') {
       final text = message.trailing.isEmpty ? message.params.join(' ') : message.trailing;
       if (_looksLikeAccessBan(text)) {
@@ -274,7 +282,7 @@ class IrcController extends ChangeNotifier {
     }
     final sender = message.nick;
     if (message.command == 'JOIN' && message.params.isNotEmpty && sender != null) { final channel = message.params.last; final room = rooms.putIfAbsent(channel, () => ChatRoomModel(channel)); room.addUser(sender); _disconnectedUsers.remove(sender.toLowerCase()); if (_sameNick(sender, _lastNickname)) { activeRoom ??= channel; room.unread = 0; } else { _logModeration('$sender entró en $channel'); } }
-    if (message.command == 'PART' && message.params.isNotEmpty && sender != null) { final channel = message.params.first; rooms[channel]?.removeUser(sender); _logModeration('$sender salió de $channel'); if (_sameNick(sender, _lastNickname)) { rooms.remove(channel); if (activeRoom == channel) activeRoom = rooms.isEmpty ? null : rooms.keys.first; } }
+    if (message.command == 'PART' && message.params.isNotEmpty && sender != null) { final channel = message.params.first; rooms[channel]?.removeUser(sender); _logModeration('$sender salió de $channel'); if (_sameNick(sender, _lastNickname)) { _cancelTemporaryBanTimers(channel: channel); rooms.remove(channel); if (activeRoom == channel) activeRoom = rooms.isEmpty ? null : rooms.keys.first; } }
     if (message.command == 'QUIT' && sender != null) { _disconnectedUsers.add(sender.toLowerCase()); for (final room in rooms.values) { room.removeUser(sender); } _logModeration('$sender se desconectó (${message.trailing})'); }
     if (message.command == 'NICK' && sender != null && message.params.isNotEmpty) { final newNick = message.params.last; if (_disconnectedUsers.remove(sender.toLowerCase())) _disconnectedUsers.add(newNick.toLowerCase()); for (final room in rooms.values) { room.renameUser(sender, newNick); } if (_sameNick(sender, _lastNickname)) { _lastNickname = newNick; status = 'Nickname: $newNick'; } }
     if (message.command == 'KICK' && message.params.length >= 2) { final channel = message.params.first; final kicked = message.params[1]; rooms[channel]?.removeUser(kicked); _logModeration('$kicked recibió kick en $channel por ${sender ?? 'operador'}: ${message.trailing}'); if (_sameNick(kicked, _lastNickname)) { rooms.remove(channel); if (activeRoom == channel) activeRoom = rooms.isEmpty ? null : rooms.keys.first; status = 'Expulsado de $channel'; } }
