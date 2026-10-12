@@ -707,7 +707,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 leadingWidth: 8,
                 titleSpacing: 0,
                 title: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const _JersIrcLogo(size: 24),
+                  const _ParloteoLogo(size: 24),
                   const SizedBox(width: 7),
                   Flexible(
                     child: Column(
@@ -718,7 +718,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           shaderCallback: (bounds) => const LinearGradient(
                             colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)],
                           ).createShader(bounds),
-                          child: const Text('JersIRC', style: TextStyle(fontSize: 14, height: 1.1, fontWeight: FontWeight.w800, color: Colors.white)),
+                          child: const Text('Parloteo', style: TextStyle(fontSize: 14, height: 1.1, fontWeight: FontWeight.w800, color: Colors.white)),
                         ),
                         Text(
                           nick.text.trim().isEmpty ? 'Nick' : nick.text.trim(),
@@ -768,9 +768,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : AppBar(
                 backgroundColor: const Color(0xFF111820),
                 title: const Row(mainAxisSize: MainAxisSize.min, children: [
-                  _JersIrcLogo(size: 28),
+                  _ParloteoLogo(size: 28),
                   SizedBox(width: 8),
-                  Text('JersIRC', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+                  Text('Parloteo', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
                 ]),
               ),
         drawer: controller.connected ? _drawer() : null,
@@ -1162,9 +1162,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-class _JersIrcLogo extends StatelessWidget {
+class _ParloteoLogo extends StatelessWidget {
   final double size;
-  const _JersIrcLogo({this.size = 28});
+  const _ParloteoLogo({this.size = 28});
 
   @override
   Widget build(BuildContext context) {
@@ -1176,21 +1176,22 @@ class _JersIrcLogo extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF35C5FF), Color(0xFF7657FF)],
+          colors: [Color(0xFF1D4ED8), Color(0xFF172554)],
         ),
         boxShadow: const [
-          BoxShadow(color: Color(0x5535C5FF), blurRadius: 7, spreadRadius: 1),
+          BoxShadow(color: Color(0x553B82F6), blurRadius: 7, spreadRadius: 1),
         ],
       ),
-      alignment: Alignment.center,
-      child: Text(
-        'J',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: size * .58,
-          fontWeight: FontWeight.w900,
-          height: 1,
-        ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Icon(Icons.chat_bubble_rounded, color: Colors.white, size: size * .63),
+          Positioned(
+            top: -size * .12,
+            child: Text('👑', style: TextStyle(fontSize: size * .38, height: 1)),
+          ),
+        ],
       ),
     );
   }

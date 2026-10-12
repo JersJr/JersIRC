@@ -10,8 +10,8 @@ void main() {
   FlutterForegroundTask.init(
     androidNotificationOptions: AndroidNotificationOptions(
       channelId: 'jersirc_connection',
-      channelName: 'JersIRC',
-      channelDescription: 'Mantiene activa la conexión IRC de JersIRC.',
+      channelName: 'Parloteo',
+      channelDescription: 'Mantiene activa la conexión de chat de Parloteo.'
       channelImportance: NotificationChannelImportance.LOW,
       onlyAlertOnce: true,
     ),
@@ -36,7 +36,7 @@ class JersIrcApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'JersIRC',
+        title: 'Parloteo',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           brightness: Brightness.dark,

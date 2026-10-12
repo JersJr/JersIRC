@@ -1,6 +1,6 @@
-# JersIRC
+# Parloteo
 
-Cliente IRC moderno para Android, construido con Flutter.
+Aplicación de chat IRC en español para Android, construida con Flutter.
 
 ## Estado actual
 

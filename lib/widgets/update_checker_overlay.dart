@@ -58,7 +58,7 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
         builder: (dialogContext) => AlertDialog(
           title: const Text('Nueva versión disponible'),
           content: Text(
-            'Hay una nueva versión de JersIRC disponible: $latest.\n\n'
+            'Hay una nueva versión de Parloteo disponible: $latest.\n\n'
             'La versión instalada es ${package.version}.',
           ),
           actions: [

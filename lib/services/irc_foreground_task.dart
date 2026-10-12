@@ -29,7 +29,7 @@ class IrcForegroundTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     FlutterForegroundTask.updateService(
-      notificationTitle: 'JersIRC conectado',
+      notificationTitle: 'Parloteo conectado',
       notificationText: 'Manteniendo la conexión IRC activa',
     );
   }
@@ -93,9 +93,9 @@ class IrcForegroundTaskHandler extends TaskHandler {
         cancelOnError: false,
       );
       _sendRaw('NICK $_nickname');
-      _sendRaw('USER $_nickname 0 * :JersIRC Android Client');
+      _sendRaw('USER $_nickname 0 * :Parloteo Android Client');
       FlutterForegroundTask.updateService(
-        notificationTitle: 'JersIRC conectado',
+        notificationTitle: 'Parloteo conectado',
         notificationText: 'Conectado a $_host:$_port',
       );
     } catch (error) {

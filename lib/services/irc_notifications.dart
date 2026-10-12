@@ -6,8 +6,8 @@ class JersIrcNotifications {
   static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
     'jersirc_messages',
-    'Mensajes de JersIRC',
-    description: 'Menciones y mensajes privados de JersIRC.',
+    'Mensajes de Parloteo',
+    description: 'Menciones y mensajes privados de Parloteo.',
     importance: Importance.high,
   );
 
@@ -26,8 +26,8 @@ class JersIrcNotifications {
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         'jersirc_messages',
-        'Mensajes de JersIRC',
-        channelDescription: 'Menciones y mensajes privados de JersIRC.',
+        'Mensajes de Parloteo',
+        channelDescription: 'Menciones y mensajes privados de Parloteo.',
         importance: Importance.high,
         priority: Priority.high,
         playSound: true,
