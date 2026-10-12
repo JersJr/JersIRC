@@ -708,6 +708,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (_operatorToolsAvailable && room != null && !room!.privateChat) ...[
         const Divider(height: 28),
         const Text('HERRAMIENTAS DE SALA', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white54, fontWeight: FontWeight.bold)),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: room!.showActivityAnnouncements,
+          secondary: const Icon(Icons.campaign_outlined),
+          title: const Text('Mostrar actividad en el chat'),
+          subtitle: const Text('Anuncia entradas y salidas a todos en la sala'),
+          onChanged: (enabled) {
+            controller.setRoomActivityAnnouncements(room!.name, enabled);
+            setState(() {});
+          },
+        ),
         ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.history), title: const Text('Actividad de moderación'), subtitle: const Text('Entradas, salidas y bans'), onTap: () { Navigator.pop(context); _showModerationActivity(); }),
         ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.block_outlined), title: const Text('Lista de bans'), subtitle: const Text('Consultar y retirar bans de esta sala'), onTap: () { Navigator.pop(context); _showBanList(); }),
       ],
