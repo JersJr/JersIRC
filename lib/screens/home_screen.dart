@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../controllers/irc_controller.dart';
 import '../models.dart';
 import '../storage.dart';
@@ -427,7 +428,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       ),
     );
-    if (shouldDisconnect == true) await controller.disconnect();
+    if (shouldDisconnect == true) {
+      await controller.disconnect();
+      if (mounted) SystemNavigator.pop();
+    }
   }
 
   Future<void> _showRoomExplorer() async {
@@ -686,11 +690,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       icon: const Icon(Icons.explore_outlined, size: 18),
-                      label: const Text('BUSCAR SALAS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                      label: const Text('Explorar salas', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
                     )
                   else
                     IconButton(
-                      tooltip: 'Buscar salas',
+                      tooltip: 'Explorar salas',
                       onPressed: _showRoomExplorer,
                       icon: const Icon(Icons.explore_outlined, color: Color(0xFF9B7BFF)),
                     ),
@@ -702,8 +706,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   Builder(
                     builder: (scaffoldContext) => IconButton(
-                      tooltip: 'Configuración avanzada',
-                      onPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
+                      tooltip: 'Opciones',
+                      onPressed: () {}, // Reservado para una futura función.
                       icon: const Icon(Icons.settings_outlined),
                     ),
                   ),
@@ -813,10 +817,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Center(child: Text('Configuración avanzada', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
-              const Center(child: Text('Nickname y conversaciones privadas', style: TextStyle(color: Colors.white54))),
+              const Center(child: Text('Cambio de nick', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
               const SizedBox(height: 22),
-              const Text('CAMBIAR DE NICK', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
+              const Text('Cambio de nick', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
               const SizedBox(height: 8),
               Row(children: [
                 Expanded(
@@ -839,7 +842,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ]),
               const SizedBox(height: 18),
-              const Text('CONVERSACIONES PRIVADAS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
+              const Text('Privados', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54)),
               const SizedBox(height: 8),
               Builder(
                 builder: (_) {
@@ -978,34 +981,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _chat(ChatRoomModel r) => Column(children: [
-    Container(
-      width: double.infinity,
-      height: 38,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: const BoxDecoration(
-        color: Color(0xFF151B22),
-        border: Border(bottom: BorderSide(color: Colors.white10)),
-      ),
-      child: Row(children: [
-        Icon(r.privateChat ? Icons.person_outline_rounded : Icons.tag_rounded,
-            size: 17, color: r.privateChat ? const Color(0xFF9B7BFF) : const Color(0xFF55C7FF)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            r.privateChat ? 'Chat privado · ${r.name}' : '',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
-          ),
+    if (r.privateChat)
+      Container(
+        width: double.infinity,
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: const BoxDecoration(
+          color: Color(0xFF151B22),
+          border: Border(bottom: BorderSide(color: Colors.white10)),
         ),
-        if (!r.privateChat) ...[
-          const Icon(Icons.people_alt_outlined, size: 15, color: Colors.white54),
-          const SizedBox(width: 5),
-          Text('${r.users.length}', style: const TextStyle(fontSize: 11, color: Colors.white60)),
-        ] else
+        child: Row(children: [
+          const Icon(Icons.person_outline_rounded, size: 17, color: Color(0xFF9B7BFF)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('Chat privado · ${r.name}', maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+          ),
           const Text('Mensaje directo', style: TextStyle(fontSize: 10, color: Colors.white54)),
-      ]),
-    ),
+        ]),
+      ),
     if (!controller.connected)
       Container(width: double.infinity, padding: const EdgeInsets.all(6), color: Colors.orange.withOpacity(.12), child: Text(controller.status, style: const TextStyle(fontSize: 12))),
     Expanded(child: r.messages.isEmpty
