@@ -66,7 +66,7 @@ class IrcController extends ChangeNotifier {
   Future<void> disconnect() async { manualDisconnect = true; _reconnectTimer?.cancel(); await client.disconnect(); connected = false; connecting = false; status = 'Desconectado'; notifyListeners(); }
 
   void join(String channel) { final n = channel.trim(); if (!connected || n.isEmpty) return; rooms.putIfAbsent(n, () => ChatRoomModel(n)); activeRoom = n; rooms[n]!.unread = 0; client.join(n); notifyListeners(); }
-  void openPrivate(String nickname) { final n = nickname.trim(); if (!connected || n.isEmpty) return; final existing = rooms.keys.firstWhere((key) => key.toLowerCase() == n.toLowerCase(), orElse: () => ''); if (existing.isNotEmpty) { activeRoom = existing; rooms[existing]!.unread = 0; } else { rooms[n] = ChatRoomModel(n, privateChat: true); activeRoom = n; } notifyListeners(); }
+  void openPrivate(String nickname) { final n = nickname.trim(); if (!connected || n.isEmpty || ignoredUsers.contains(n.toLowerCase())) return; final existing = rooms.keys.firstWhere((key) => key.toLowerCase() == n.toLowerCase(), orElse: () => ''); if (existing.isNotEmpty) { activeRoom = existing; rooms[existing]!.unread = 0; } else { rooms[n] = ChatRoomModel(n, privateChat: true); activeRoom = n; } notifyListeners(); }
   void closeRoom(String name) { if (name.isEmpty) return; final key = rooms.keys.firstWhere((k) => k.toLowerCase() == name.toLowerCase(), orElse: () => ''); if (key.isEmpty) return; final r = rooms[key]!; if (!r.privateChat && connected) client.part(key); rooms.remove(key); if (activeRoom == key) activeRoom = rooms.isEmpty ? null : rooms.keys.first; notifyListeners(); }
   void changeNick(String nickname) { final n = nickname.trim(); if (connected && n.isNotEmpty) client.changeNick(n); }
 
@@ -84,7 +84,7 @@ class IrcController extends ChangeNotifier {
   }
 
   void sendPrivate(String target, String text) {
-    final t = target.trim(), v = text.trim(); if (!connected || t.isEmpty || v.isEmpty) return;
+    final t = target.trim(), v = text.trim(); if (!connected || t.isEmpty || v.isEmpty || ignoredUsers.contains(t.toLowerCase())) return;
     openPrivate(t);
     if (_disconnectedUsers.contains(t.toLowerCase())) {
       _addDisconnectedNotice(t);
