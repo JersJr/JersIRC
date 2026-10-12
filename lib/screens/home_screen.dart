@@ -666,19 +666,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _confirmAdvancedSettings() async {
-    final proceed = await showDialog<bool>(
+    if (await storage.getSkipAdvancedWarning()) {
+      if (mounted) _scaffoldKey.currentState?.openEndDrawer();
+      return;
+    }
+    var doNotRemind = false;
+    final result = await showDialog<Map<String, bool>>(
       context: context,
-      builder: (_) => AlertDialog(
-        icon: const Icon(Icons.warning_amber_rounded, color: Colors.amber),
-        title: const Text('Configuraciones avanzadas'),
-        content: const Text('Estos cambios pueden ser permanentes y afectar tu experiencia en el chat. Si no conoces su funcionamiento, podrías perjudicar tu experiencia. ¿Deseas continuar?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Continuar')),
-        ],
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          icon: const Icon(Icons.warning_amber_rounded, color: Colors.amber),
+          title: const Text('Configuraciones avanzadas'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Estos cambios pueden ser permanentes y afectar tu experiencia en el chat. Si no conoces su funcionamiento, podrías perjudicar tu experiencia. ¿Deseas continuar?'),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                value: doNotRemind,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('No recordar'),
+                onChanged: (value) => setDialogState(() => doNotRemind = value ?? false),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, {'proceed': false, 'doNotRemind': false}), child: const Text('Cancelar')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, {'proceed': true, 'doNotRemind': doNotRemind}), child: const Text('Continuar')),
+          ],
+        ),
       ),
     );
-    if (proceed == true && mounted) _scaffoldKey.currentState?.openEndDrawer();
+    if (result?['proceed'] == true) {
+      if (result?['doNotRemind'] == true) await storage.setSkipAdvancedWarning(true);
+      if (mounted) _scaffoldKey.currentState?.openEndDrawer();
+    }
   }
 
   Widget _settingsDrawer() => Drawer(
@@ -1271,35 +1296,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             if (m.command == 'SYSTEM') {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _clean(m.trailing),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white54, fontSize: 12, fontStyle: FontStyle.italic),
-                      ),
-                    ),
-                    if (controller.showActivityNotifications)
-                      TextButton(
-                        onPressed: () async {
-                          controller.setShowActivityNotifications(false);
-                          await storage.setShowActivityNotifications(false);
-                          if (mounted) setState(() {});
-                        },
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        child: const Text(
-                          'No avisar más',
-                          style: TextStyle(fontSize: 10, color: Colors.white54),
-                        ),
-                      ),
-                  ],
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _clean(m.trailing),
+                    textAlign: TextAlign.left,
+                    style: const TextStyle(color: Colors.white54, fontSize: 12, fontStyle: FontStyle.italic),
+                  ),
                 ),
               );
             }
