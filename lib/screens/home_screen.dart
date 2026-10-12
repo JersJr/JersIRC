@@ -54,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     controller.addListener(_refresh);
     _loadServers();
     _loadLastNickname();
+    _loadActivityNotifications();
   }
 
   void _refresh() {
@@ -92,6 +93,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => savedServers = list);
     // La pantalla inicial usa siempre el acceso WebChat. Los perfiles se mantienen
     // disponibles únicamente desde la configuración avanzada después de conectar.
+  }
+
+  Future<void> _loadActivityNotifications() async {
+    final enabled = await storage.getShowActivityNotifications();
+    if (!mounted) return;
+    controller.setShowActivityNotifications(enabled);
+    setState(() {});
   }
 
   Future<void> _loadLastNickname() async {
@@ -687,6 +695,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         secondary: const Icon(Icons.mark_chat_unread_outlined),
         onChanged: (value) => setState(() => controller.setIgnorePrivateMessages(value)),
       ),
+      SwitchListTile.adaptive(
+        contentPadding: EdgeInsets.zero,
+        value: controller.showActivityNotifications,
+        title: const Text('Mostrar notificaciones de actividad'),
+        subtitle: const Text('Muestra entradas, salidas y acciones de moderación solo en este dispositivo.'),
+        secondary: const Icon(Icons.notifications_active_outlined),
+        onChanged: (value) async {
+          controller.setShowActivityNotifications(value);
+          await storage.setShowActivityNotifications(value);
+          if (mounted) setState(() {});
+        },
+      ),
       const Divider(height: 28),
       const Text('CONEXIÓN', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white54, fontWeight: FontWeight.bold)),
       const SizedBox(height: 10),
@@ -708,17 +728,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (_operatorToolsAvailable && room != null && !room!.privateChat) ...[
         const Divider(height: 28),
         const Text('HERRAMIENTAS DE SALA', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white54, fontWeight: FontWeight.bold)),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: room!.showActivityAnnouncements,
-          secondary: const Icon(Icons.campaign_outlined),
-          title: const Text('Mostrar actividad en el chat'),
-          subtitle: const Text('Anuncia entradas y salidas a todos en la sala'),
-          onChanged: (enabled) {
-            controller.setRoomActivityAnnouncements(room!.name, enabled);
-            setState(() {});
-          },
-        ),
         ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.history), title: const Text('Actividad de moderación'), subtitle: const Text('Entradas, salidas y bans'), onTap: () { Navigator.pop(context); _showModerationActivity(); }),
         ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.block_outlined), title: const Text('Lista de bans'), subtitle: const Text('Consultar y retirar bans de esta sala'), onTap: () { Navigator.pop(context); _showBanList(); }),
       ],
@@ -1261,6 +1270,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           itemCount: r.messages.length,
           itemBuilder: (context, i) {
             final m = r.messages[i];
+            if (m.command == 'SYSTEM') {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Center(
+                  child: Text(
+                    _clean(m.trailing),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white54, fontSize: 12, fontStyle: FontStyle.italic),
+                  ),
+                ),
+              );
+            }
             if (m.command == 'DISCONNECTED_USER') {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 5),
