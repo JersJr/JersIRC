@@ -24,32 +24,41 @@ class UserActionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SafeArea(
-    child: Wrap(children: [
-      ListTile(
-        leading: const CircleAvatar(child: Icon(Icons.person)),
-        title: Text(nickname, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: const Text('Acciones IRC'),
-      ),
-      ListTile(leading: const Icon(Icons.chat_bubble_outline), title: const Text('Mensaje privado'), onTap: () { Navigator.pop(context); onPrivate(); }),
-      ListTile(leading: const Icon(Icons.alternate_email), title: const Text('Mencionar'), onTap: () { Navigator.pop(context); onMention(); }),
-      ListTile(leading: Icon(isIgnored ? Icons.visibility : Icons.visibility_off), title: Text(isIgnored ? 'Dejar de ignorar' : 'Ignorar'), onTap: () { Navigator.pop(context); onIgnore(); }),
-      if (isOperator) ...[
-        const Divider(height: 1),
-        ListTile(leading: const Icon(Icons.info_outline), title: const Text('WHOIS'), onTap: () { Navigator.pop(context); onWhois(); }),
-        ListTile(leading: const Icon(Icons.volume_off_outlined), title: const Text('Silenciar (ban temporal)'), subtitle: const Text('Define la duración en minutos'), onTap: () { Navigator.pop(context); onTemporaryBan(); }),
-        ListTile(leading: const Icon(Icons.gavel_outlined), title: const Text('Kick + Ban por nick'), subtitle: const Text('Banea y expulsa con motivo editable'), onTap: () { Navigator.pop(context); onBanNick(); }),
-        ListTile(leading: const Icon(Icons.shield_outlined), title: const Text('Kick + Ban por IP virtual'), subtitle: const Text('Consulta WHOIS y aplica la máscara de host disponible'), onTap: () { Navigator.pop(context); onBanHost(); }),
-        ExpansionTile(
-          leading: const Icon(Icons.admin_panel_settings_outlined),
-          title: const Text('Rango y modos'),
+    child: ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.86),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(leading: const Icon(Icons.arrow_upward), title: const Text('Dar OP (@)'), onTap: () { Navigator.pop(context); onMode('+o'); }),
-            ListTile(leading: const Icon(Icons.arrow_downward), title: const Text('Quitar OP (@)'), onTap: () { Navigator.pop(context); onMode('-o'); }),
-            ListTile(leading: const Icon(Icons.record_voice_over_outlined), title: const Text('Dar voz (+v)'), onTap: () { Navigator.pop(context); onMode('+v'); }),
-            ListTile(leading: const Icon(Icons.voice_over_off_outlined), title: const Text('Quitar voz (+v)'), onTap: () { Navigator.pop(context); onMode('-v'); }),
+            ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.person)),
+              title: Text(nickname, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text('Acciones IRC'),
+            ),
+            ListTile(leading: const Icon(Icons.chat_bubble_outline), title: const Text('Mensaje privado'), onTap: () { Navigator.pop(context); onPrivate(); }),
+            ListTile(leading: const Icon(Icons.alternate_email), title: const Text('Mencionar'), onTap: () { Navigator.pop(context); onMention(); }),
+            ListTile(leading: Icon(isIgnored ? Icons.visibility : Icons.visibility_off), title: Text(isIgnored ? 'Dejar de ignorar' : 'Ignorar'), onTap: () { Navigator.pop(context); onIgnore(); }),
+            if (isOperator) ...[
+              const Divider(height: 1),
+              ListTile(leading: const Icon(Icons.info_outline), title: const Text('WHOIS'), onTap: () { Navigator.pop(context); onWhois(); }),
+              ListTile(leading: const Icon(Icons.volume_off_outlined), title: const Text('Silenciar (ban temporal)'), subtitle: const Text('Define la duración en minutos'), onTap: () { Navigator.pop(context); onTemporaryBan(); }),
+              ListTile(leading: const Icon(Icons.gavel_outlined), title: const Text('Kick + Ban por nick'), subtitle: const Text('Banea y expulsa con motivo editable'), onTap: () { Navigator.pop(context); onBanNick(); }),
+              ListTile(leading: const Icon(Icons.shield_outlined), title: const Text('Kick + Ban por IP virtual'), subtitle: const Text('Consulta WHOIS y aplica la máscara de host disponible'), onTap: () { Navigator.pop(context); onBanHost(); }),
+              ExpansionTile(
+                leading: const Icon(Icons.admin_panel_settings_outlined),
+                title: const Text('Rango y modos'),
+                children: [
+                  ListTile(leading: const Icon(Icons.arrow_upward), title: const Text('Dar OP (@)'), onTap: () { Navigator.pop(context); onMode('+o'); }),
+                  ListTile(leading: const Icon(Icons.arrow_downward), title: const Text('Quitar OP (@)'), onTap: () { Navigator.pop(context); onMode('-o'); }),
+                  ListTile(leading: const Icon(Icons.record_voice_over_outlined), title: const Text('Dar voz (+v)'), onTap: () { Navigator.pop(context); onMode('+v'); }),
+                  ListTile(leading: const Icon(Icons.voice_over_off_outlined), title: const Text('Quitar voz (+v)'), onTap: () { Navigator.pop(context); onMode('-v'); }),
+                ],
+              ),
+            ],
           ],
         ),
-      ],
-    ]),
+      ),
+    ),
   );
 }
