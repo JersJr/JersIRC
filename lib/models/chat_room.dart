@@ -8,7 +8,6 @@ class ChatRoomModel {
   final Map<String, IrcUser> users = <String, IrcUser>{};
   int unread = 0;
   String? topic;
-  bool showActivityAnnouncements = false;
 
   ChatRoomModel(this.name, {this.privateChat = false});
 
