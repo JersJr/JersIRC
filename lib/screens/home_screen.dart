@@ -705,8 +705,75 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       if (_operatorToolsEnabled && !_hasOperatorRank)
         const Padding(padding: EdgeInsets.only(left: 4, right: 4, bottom: 12), child: Text('Las acciones de moderación solo estarán disponibles cuando el servidor te conceda rango de operador (@) en una sala.', style: TextStyle(color: Colors.amber, fontSize: 12))),
+      if (_operatorToolsAvailable && room != null && !room!.privateChat) ...[
+        const Divider(height: 28),
+        const Text('HERRAMIENTAS DE SALA', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white54, fontWeight: FontWeight.bold)),
+        ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.history), title: const Text('Actividad de moderación'), subtitle: const Text('Entradas, salidas y bans'), onTap: () { Navigator.pop(context); _showModerationActivity(); }),
+        ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.block_outlined), title: const Text('Lista de bans'), subtitle: const Text('Consultar y retirar bans de esta sala'), onTap: () { Navigator.pop(context); _showBanList(); }),
+      ],
     ])),
   );
+
+  Future<String?> _askReason(String title, {String initial = '', required bool requireReason}) async {
+    final text = TextEditingController(text: initial);
+    final result = await showDialog<String>(context: context, builder: (dialogContext) => AlertDialog(
+      title: Text(title),
+      content: TextField(controller: text, autofocus: true, maxLines: 3, decoration: InputDecoration(labelText: 'Motivo', hintText: requireReason ? 'Escribe el motivo antes de ejecutar' : 'Nick inadecuado')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')),
+        FilledButton(onPressed: () { if (!requireReason || text.text.trim().isNotEmpty) Navigator.pop(dialogContext, text.text.trim().isEmpty ? 'Nick inadecuado' : text.text.trim()); }, child: const Text('Continuar')),
+      ],
+    ));
+    text.dispose();
+    return result;
+  }
+
+  Future<int?> _askBanMinutes() async {
+    final text = TextEditingController(text: '5');
+    final result = await showDialog<int>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Silenciar temporalmente'),
+      content: TextField(controller: text, autofocus: true, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Duración en minutos')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')),
+        FilledButton(onPressed: () { final minutes = int.tryParse(text.text.trim()); if (minutes != null && minutes > 0 && minutes <= 10080) Navigator.pop(dialogContext, minutes); }, child: const Text('Aplicar ban')),
+      ],
+    ));
+    text.dispose();
+    return result;
+  }
+
+  Future<void> _showModerationActivity() async {
+    await showDialog<void>(context: context, builder: (_) => AlertDialog(
+      title: const Text('Actividad de moderación'),
+      content: SizedBox(width: 420, height: 420, child: controller.moderationActivity.isEmpty
+        ? const Center(child: Text('Todavía no hay actividad registrada.'))
+        : ListView.builder(itemCount: controller.moderationActivity.length, itemBuilder: (_, i) => Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(controller.moderationActivity[i])))),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar'))],
+    ));
+  }
+
+  Future<void> _showBanList() async {
+    final target = room?.name;
+    if (target == null || !target.startsWith('#')) return;
+    controller.requestBanList(target);
+    await showDialog<void>(context: context, builder: (dialogContext) => AnimatedBuilder(
+      animation: controller,
+      builder: (_, __) => AlertDialog(
+        title: Text('Bans de $target'),
+        content: SizedBox(width: 420, height: 420, child: controller.channelBans.isEmpty
+          ? const Center(child: Text('No hay bans o el servidor aún no respondió.'))
+          : ListView(children: controller.channelBans.values.map((mask) => ListTile(
+              dense: true,
+              title: SelectableText(mask),
+              trailing: IconButton(tooltip: 'Quitar ban', icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent), onPressed: () => controller.removeBan(target, mask)),
+            )).toList())),
+        actions: [
+          TextButton(onPressed: () { controller.requestBanList(target); }, child: const Text('Actualizar')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cerrar')),
+        ],
+      ),
+    ));
+  }
 
   Future<void> _showWhoisNotice(String details) async {
     await showDialog<void>(context: context, builder: (_) => AlertDialog(
@@ -730,8 +797,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         isOperator: _operatorToolsAvailable,
         onWhois: () => controller.requestWhois(nickname),
         onIgnore: () => controller.toggleIgnore(nickname),
-        onBanNick: () { final target = room?.name; if (target != null && target.startsWith('#')) controller.banNickname(target, nickname); },
-        onBanHost: () { final target = room?.name; if (target != null && target.startsWith('#')) controller.banVirtualHost(target, nickname); },
+        onBanNick: () async {
+          final target = room?.name;
+          if (target != null && target.startsWith('#')) {
+            final reason = await _askReason('Kick + Ban por nick', initial: 'Nick inadecuado', requireReason: false);
+            if (reason != null) controller.kickBanNickname(target, nickname, reason);
+          }
+        },
+        onBanHost: () async {
+          final target = room?.name;
+          if (target != null && target.startsWith('#')) {
+            final reason = await _askReason('Kick + Ban por IP virtual', requireReason: true);
+            if (reason != null) controller.kickBanVirtualHost(target, nickname, reason);
+          }
+        },
+        onTemporaryBan: () async {
+          final target = room?.name;
+          if (target == null || !target.startsWith('#')) return;
+          final minutes = await _askBanMinutes();
+          if (minutes != null) controller.temporaryBan(target, nickname, minutes);
+        },
         onMode: (mode) {
           final target = room?.name;
           if (target != null && target.startsWith('#')) controller.client.send('MODE $target $mode $nickname');
