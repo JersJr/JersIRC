@@ -11,6 +11,11 @@ class IrcController extends ChangeNotifier {
   final IrcClient client;
   final Map<String, ChatRoomModel> rooms = {};
   final Set<String> ignoredUsers = <String>{};
+  bool ignorePrivateMessages = false;
+  String? whoisNotice;
+  String? _whoisTarget;
+  final List<String> _whoisLines = <String>[];
+  String? _pendingHostBanChannel, _pendingHostBanNick;
   final Set<String> _disconnectedUsers = <String>{};
   StreamSubscription<IrcMessage>? _subscription;
   Timer? _reconnectTimer;
@@ -113,6 +118,11 @@ class IrcController extends ChangeNotifier {
   void sendNotice(String target, String text) { if (connected && target.trim().isNotEmpty && text.trim().isNotEmpty) client.notice(target.trim(), text.trim()); }
   void sendAction(String target, String text) { if (connected && target.trim().isNotEmpty && text.trim().isNotEmpty) client.message(target.trim(), '\u0001ACTION ${text.trim()}\u0001'); }
   void toggleIgnore(String nickname) { final n = nickname.trim().toLowerCase(); if (n.isEmpty) return; if (!ignoredUsers.add(n)) ignoredUsers.remove(n); notifyListeners(); }
+  void setIgnorePrivateMessages(bool value) { ignorePrivateMessages = value; notifyListeners(); }
+  void clearWhoisNotice() { whoisNotice = null; notifyListeners(); }
+  void requestWhois(String nickname) { final n = nickname.trim(); if (!connected || n.isEmpty) return; _whoisTarget = n; _whoisLines.clear(); whoisNotice = null; client.sendRaw('WHOIS $n'); }
+  void banNickname(String channel, String nickname) { if (!connected || channel.isEmpty || nickname.isEmpty) return; client.sendRaw('MODE $channel +b $nickname!*@*'); }
+  void banVirtualHost(String channel, String nickname) { if (!connected || channel.isEmpty || nickname.isEmpty) return; _pendingHostBanChannel = channel; _pendingHostBanNick = nickname; client.sendRaw('WHOIS $nickname'); }
   void clearBanNotice() { banNotice = null; banChannel = null; banIsServer = true; }
 
   bool _looksLikeAccessBan(String text) {
@@ -137,6 +147,36 @@ class IrcController extends ChangeNotifier {
     }
     if (message.command == '001') { connected = true; connecting = false; status = 'Conectado'; _reconnectTimer?.cancel(); }
     final numeric = int.tryParse(message.command);
+    if (numeric == 311 && message.params.length >= 5) {
+      final targetNick = message.params[1];
+      final user = message.params[2];
+      final host = message.params[3];
+      final realName = message.params.last;
+      if (_whoisTarget != null && targetNick.toLowerCase() == _whoisTarget!.toLowerCase()) {
+        _whoisLines.add('Nick: $targetNick');
+        _whoisLines.add('Usuario: $user');
+        _whoisLines.add('Host virtual: $host');
+        if (realName.isNotEmpty) _whoisLines.add('Nombre: $realName');
+      }
+      if (_pendingHostBanNick != null && targetNick.toLowerCase() == _pendingHostBanNick!.toLowerCase()) {
+        final channel = _pendingHostBanChannel!;
+        client.sendRaw('MODE $channel +b *!*@$host');
+        _pendingHostBanChannel = null;
+        _pendingHostBanNick = null;
+      }
+    }
+    if (_whoisTarget != null && message.params.length >= 2 && message.params[1].toLowerCase() == _whoisTarget!.toLowerCase()) {
+      if (numeric == 312) _whoisLines.add('Servidor: ${message.params.length > 2 ? message.params[2] : message.trailing}');
+      if (numeric == 317) _whoisLines.add('Inactivo: ${message.params.length > 2 ? message.params[2] : message.trailing} segundos');
+      if (numeric == 319) _whoisLines.add('Salas: ${message.trailing}');
+      if (numeric == 301) _whoisLines.add('Ausencia: ${message.trailing}');
+      if (numeric == 318) {
+        if (_whoisLines.isEmpty) _whoisLines.add('El servidor no proporcionó datos WHOIS adicionales.');
+        whoisNotice = 'Consulta de $_whoisTarget\\n\\n${_whoisLines.join('\\n')}';
+        _whoisTarget = null;
+        notifyListeners();
+      }
+    }
     if (numeric != null && numeric >= 400 && numeric != 422) {
       status = friendlyError(message);
       if (numeric == 465) {
@@ -178,6 +218,7 @@ class IrcController extends ChangeNotifier {
     if (message.params.isEmpty) return;
     final target = message.params.first;
     final isChannel = _isChannel(target);
+    if (!isChannel && ignorePrivateMessages && !_sameNick(sender, _lastNickname)) return;
     final roomName = isChannel ? target : (sender ?? target);
     final existingKey = rooms.keys.firstWhere((key) => key.toLowerCase() == roomName.toLowerCase(), orElse: () => '');
     final room = existingKey.isNotEmpty ? rooms[existingKey]! : rooms.putIfAbsent(roomName, () => ChatRoomModel(roomName, privateChat: !isChannel));
