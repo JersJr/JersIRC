@@ -1064,7 +1064,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 5),
                 child: Text(
-                  ${_clean(m.trailing)},
+                  _clean(m.trailing),
                   style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
                 ),
               );
