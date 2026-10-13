@@ -4,10 +4,32 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:fillColor="#172554" android:pathData="M18,0 H90 Q108,0 108,18 V90 Q108,108 90,108 H18 Q0,108 0,90 V18 Q0,0 18,0 Z"/>
-    <path android:fillColor="#2563EB" android:pathData="M13,13 H95 V95 H13 Z"/>
-    <path android:fillColor="#FFFFFF" android:pathData="M18,43 Q18,34 27,34 H62 Q71,34 71,43 V59 Q71,68 62,68 H43 L30,79 V68 H27 Q18,68 18,59 Z"/>
-    <path android:fillColor="#93C5FD" android:pathData="M47,59 Q47,52 54,52 H79 Q87,52 87,60 V72 Q87,80 79,80 H74 V89 L64,80 H54 Q47,80 47,72 Z"/>
-    <path android:fillColor="#FBBF24" android:pathData="M35,28 L31,13 L43,21 L54,8 L65,21 L77,13 L73,28 Z"/>
-    <path android:fillColor="#F59E0B" android:pathData="M35,30 H73 V35 H35 Z"/>
+    <!-- Parloteo: una P que también parece un globo de conversación. -->
+    <path
+        android:fillColor="#080A12"
+        android:pathData="M22,0 H86 Q108,0 108,22 V86 Q108,108 86,108 H22 Q0,108 0,86 V22 Q0,0 22,0 Z"/>
+    <path
+        android:fillColor="#15112D"
+        android:pathData="M15,18 Q15,10 25,10 H83 Q98,10 98,25 V83 Q98,98 83,98 H25 Q10,98 10,83 V25 Z"/>
+    <path
+        android:fillColor="#6D28D9"
+        android:pathData="M29,24 H59 Q83,24 83,46 Q83,68 59,68 H43 V80 Q43,85 38,89 L27,96 Q24,97 24,92 V31 Q24,24 29,24 Z"/>
+    <path
+        android:fillColor="#A855F7"
+        android:pathData="M36,33 H58 Q72,33 72,46 Q72,58 58,58 H42 V45 Q42,40 36,40 Z"/>
+    <path
+        android:fillColor="#080A12"
+        android:pathData="M43,42 H57 Q62,42 62,47 Q62,51 57,51 H43 Z"/>
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M27,67 H43 V80 Q43,85 38,89 L27,96 Z"/>
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M43,45 m-3,0 a3,3 0,1 0,6 0 a3,3 0,1 0,-6 0"/>
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M53,45 m-3,0 a3,3 0,1 0,6 0 a3,3 0,1 0,-6 0"/>
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M63,45 m-3,0 a3,3 0,1 0,6 0 a3,3 0,1 0,-6 0"/>
 </vector>
