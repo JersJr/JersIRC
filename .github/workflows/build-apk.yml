@@ -123,7 +123,7 @@ jobs:
           ]
           for permission in permissions:
               if f'android:name="{permission}"' not in text:
-                  declaration = f'    <uses-permission android:name="{permission}" />\\n'
+                  declaration = f'    <uses-permission android:name="{permission}" />\n'
                   if marker not in text:
                       raise SystemExit('Android application marker not found')
                   text = text.replace(marker, declaration + marker, 1)
