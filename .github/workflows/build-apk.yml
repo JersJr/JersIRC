@@ -110,8 +110,25 @@ jobs:
           path.write_text(text, encoding='utf-8')
           PY
 
-      - name: Enable Android internet permission
-        run: sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
+      - name: Enable Android download and installer permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('android/app/src/main/AndroidManifest.xml')
+          text = path.read_text(encoding='utf-8')
+          permissions = [
+              'android.permission.INTERNET',
+              'android.permission.REQUEST_INSTALL_PACKAGES',
+          ]
+          for permission in permissions:
+              if f'android:name="{permission}"' not in text:
+                  text = text.replace(
+                      '<manifest ',
+                      f'<manifest \\n    <uses-permission android:name="{permission}" />',
+                      1,
+                  )
+          path.write_text(text, encoding='utf-8')
+          PY
 
       - name: Configure production signing
         env:
