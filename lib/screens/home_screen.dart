@@ -102,10 +102,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {});
   }
 
+  String _cleanNickname(String value) =>
+      value.replaceAll(RegExp(r'[\\x00-\\x1F\\x7F]'), '').trim();
+
   Future<void> _loadLastNickname() async {
     final last = await storage.getLastNickname();
     if (!mounted || nick.text.trim().isNotEmpty || last == null) return;
-    nick.text = last;
+    nick.text = _cleanNickname(last);
     setState(() {});
   }
 
@@ -127,7 +130,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _applyProfile(SavedServer saved) {
     host.text = saved.host;
     port.text = '${saved.port}';
-    nick.text = saved.nickname;
+    nick.text = _cleanNickname(saved.nickname);
     secure = saved.tls;
     selectedProfile = saved.name;
     if (saved.channels.isNotEmpty) channel.text = saved.channels.first;
@@ -259,7 +262,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _connect({bool autoSelectCountryRoom = false}) async {
     final p = int.tryParse(port.text) ?? (secure ? 6697 : 6667);
     final h = host.text.trim();
-    final n = nick.text.trim();
+    final n = _cleanNickname(nick.text);
     var ch = channel.text.trim();
 
     await controller.connect(host: h, port: p, nickname: n, secure: secure);
@@ -937,7 +940,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           child: const Text('Parloteo', style: TextStyle(fontSize: 14, height: 1.1, fontWeight: FontWeight.w800, color: Colors.white)),
                         ),
                         Text(
-                          nick.text.trim().isEmpty ? 'Nick' : nick.text.trim(),
+                          _cleanNickname(nick.text).isEmpty ? 'Nick' : _cleanNickname(nick.text),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 10, height: 1.2, color: Colors.white60, fontWeight: FontWeight.w500),
