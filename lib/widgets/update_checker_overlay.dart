@@ -60,6 +60,7 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
       );
       final apkUrl =
           (apkAsset['browser_download_url'] as String? ?? '').trim();
+      final expectedSize = (apkAsset['size'] as num?)?.toInt() ?? 0;
       if (apkUrl.isEmpty) return;
 
       final package = await PackageInfo.fromPlatform();
@@ -127,6 +128,7 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
                     ? null
                     : () => _downloadAndInstall(
                           apkUrl,
+                          expectedSize,
                           dialogContext,
                           (value, message, received, total) {
                             setDialogState(() {
@@ -154,6 +156,7 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
 
   Future<void> _downloadAndInstall(
     String apkUrl,
+    int expectedSize,
     BuildContext dialogContext,
     void Function(double progress, String status, int received, int total)
         onProgress,
@@ -177,7 +180,8 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
           );
         }
 
-        final total = response.contentLength ?? 0;
+        final responseLength = response.contentLength ?? 0;
+        final total = responseLength > 0 ? responseLength : expectedSize;
         final directory = await getTemporaryDirectory();
         final apkFile = File('${directory.path}/parloteo-update.apk');
         final sink = apkFile.openWrite();
