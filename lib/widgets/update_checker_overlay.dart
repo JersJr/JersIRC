@@ -191,7 +191,7 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
             sink.add(chunk);
             received += chunk.length;
             onProgress(
-              total > 0 ? (received / total).clamp(0.0, 1.0) : 0,
+              total > 0 ? (received / total).clamp(0.0, 1.0).toDouble() : 0.0,
               'Descargando APK…',
               received,
               total,
