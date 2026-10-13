@@ -128,7 +128,6 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
                     : () => _downloadAndInstall(
                           apkUrl,
                           dialogContext,
-                          setDialogState,
                           (value, message, received, total) {
                             setDialogState(() {
                               final failed = message.startsWith('ERROR: ');
