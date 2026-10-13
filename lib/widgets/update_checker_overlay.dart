@@ -74,6 +74,7 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
       var downloading = false;
       var progress = 0.0;
       var status = 'Preparando descarga…';
+      String? errorMessage;
       var downloadedBytes = 0;
       var totalBytes = 0;
 
@@ -91,6 +92,10 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
                   'Hay una nueva versión de Parloteo disponible: $latest.\n\n'
                   'La versión instalada es ${package.version}+${package.buildNumber}.',
                 ),
+                if (errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(errorMessage!, style: const TextStyle(color: Colors.redAccent)),
+                ],
                 if (downloading) ...[
                   const SizedBox(height: 20),
                   Text(status),
@@ -126,9 +131,11 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
                           setDialogState,
                           (value, message, received, total) {
                             setDialogState(() {
-                              downloading = true;
+                              final failed = message.startsWith('ERROR: ');
+                              downloading = !failed;
+                              errorMessage = failed ? message.substring(7) : null;
                               progress = value;
-                              status = message;
+                              status = failed ? 'Descarga fallida' : message;
                               downloadedBytes = received;
                               totalBytes = total;
                             });
@@ -229,9 +236,7 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
       }
     } catch (error) {
       if (dialogContext.mounted) {
-        setDialogState(() {
-          // Deja visible el diálogo y permite volver a intentar la descarga.
-        });
+        onProgress(0, 'ERROR: $error', 0, 0);
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
