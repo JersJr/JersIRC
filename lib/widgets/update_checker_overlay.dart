@@ -156,7 +156,6 @@ class _UpdateCheckerOverlayState extends State<UpdateCheckerOverlay> {
   Future<void> _downloadAndInstall(
     String apkUrl,
     BuildContext dialogContext,
-    StateSetter setDialogState,
     void Function(double progress, String status, int received, int total)
         onProgress,
   ) async {
