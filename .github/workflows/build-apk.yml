@@ -116,17 +116,17 @@ jobs:
           from pathlib import Path
           path = Path('android/app/src/main/AndroidManifest.xml')
           text = path.read_text(encoding='utf-8')
+          marker = '    <application'
           permissions = [
               'android.permission.INTERNET',
               'android.permission.REQUEST_INSTALL_PACKAGES',
           ]
           for permission in permissions:
               if f'android:name="{permission}"' not in text:
-                  text = text.replace(
-                      '<manifest ',
-                      f'<manifest \\n    <uses-permission android:name="{permission}" />',
-                      1,
-                  )
+                  declaration = f'    <uses-permission android:name="{permission}" />\\n'
+                  if marker not in text:
+                      raise SystemExit('Android application marker not found')
+                  text = text.replace(marker, declaration + marker, 1)
           path.write_text(text, encoding='utf-8')
           PY
 
