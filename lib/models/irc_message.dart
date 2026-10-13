@@ -11,6 +11,11 @@ class IrcMessage {
   String? get nick {
     final value = prefix;
     if (value == null || value.isEmpty) return null;
-    return value.split('!').first;
+    // Los controles de formato IRC nunca deben aparecer en el nickname visible.
+    return value
+        .split('!')
+        .first
+        .replaceAll(RegExp(r'[\x00-\x1F\x7F]'), '')
+        .trim();
   }
 }
