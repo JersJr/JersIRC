@@ -103,7 +103,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   String _cleanNickname(String value) =>
-      value.replaceAll(RegExp(r'[\\x00-\\x1F\\x7F]'), '').trim();
+      value.replaceAll(RegExp(r'[\x00-\x1F\x7F]'), '').trim();
 
   Future<void> _loadLastNickname() async {
     final last = await storage.getLastNickname();
