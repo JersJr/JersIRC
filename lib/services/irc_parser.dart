@@ -40,6 +40,6 @@ class IrcParser {
     }
 
     final command = parts.isEmpty ? '' : parts.removeAt(0).toUpperCase();
-    return IrcMessage(raw, prefix, command, parts);
+    return IrcMessage(raw, prefix, command, parts, timestamp: DateTime.now());
   }
 }

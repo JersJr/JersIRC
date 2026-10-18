@@ -273,8 +273,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
+    var autoJoinedCountryRoom = false;
     if (autoSelectCountryRoom) {
       _country ??= await CountryService.detect();
+      // Entrar primero a la sala del país; LIST no debe bloquear el ingreso.
+      ch = _fallbackCountryRoom(_country);
+      channel.text = ch;
+      if (ch.isNotEmpty) {
+        controller.join(ch);
+        autoJoinedCountryRoom = true;
+      }
       if (mounted) setState(() => _catalogLoading = true);
       final catalog = await controller.listChannels();
       if (!mounted) return;
@@ -283,10 +291,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _catalogLoading = false;
       });
       final defaultRoom = _defaultCountryRoom(catalog, _country);
-      // Si LIST no devuelve el catálogo completo, intenta igualmente la sala
-      // del país detectado en lugar de dejar al usuario sin entrar a ninguna.
-      ch = defaultRoom?.channel ?? _fallbackCountryRoom(_country);
-      channel.text = ch;
+      if (defaultRoom != null && defaultRoom.channel.toLowerCase() != ch.toLowerCase()) {
+        controller.closeRoom(ch);
+        ch = defaultRoom.channel;
+        channel.text = ch;
+        controller.join(ch);
+      }
     }
 
     final profileName = selectedProfile?.trim().isNotEmpty == true ? selectedProfile! : h;
@@ -305,9 +315,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _webChatEntry = false;
     });
 
-    if (ch.isNotEmpty) {
+    if (ch.isNotEmpty && !autoJoinedCountryRoom) {
       controller.join(ch);
-    } else if (autoSelectCountryRoom && mounted) {
+    } else if (autoSelectCountryRoom && ch.isEmpty && mounted) {
       await _showRoomExplorer();
     }
   }
@@ -894,58 +904,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         key: _scaffoldKey,
         appBar: controller.connected
             ? AppBar(
-                backgroundColor: const Color(0xFF111820),
+                backgroundColor: const Color(0xFF0D0D1B),
                 leading: const SizedBox.shrink(),
                 leadingWidth: 8,
-                titleSpacing: 0,
-                title: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const _ParloteoLogo(size: 24),
-                  const SizedBox(width: 7),
+                titleSpacing: 4,
+                title: Row(children: [
                   Flexible(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ShaderMask(
-                          shaderCallback: (bounds) => const LinearGradient(
-                            colors: [Color(0xFF55C7FF), Color(0xFF9B7BFF)],
-                          ).createShader(bounds),
-                          child: const Text('Parloteo', style: TextStyle(fontSize: 14, height: 1.1, fontWeight: FontWeight.w800, color: Colors.white)),
-                        ),
-                        Text(
-                          _cleanNickname(nick.text).isEmpty ? 'Nick' : _cleanNickname(nick.text),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 10, height: 1.2, color: Colors.white60, fontWeight: FontWeight.w500),
-                        ),
-                      ],
+                    child: Text(
+                      room?.name ?? 'Parloteo',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
                   ),
                 ]),
                 actions: [
-                  TextButton.icon(
-                    onPressed: _showRoomExplorer,
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF9B7BFF),
-                      padding: EdgeInsets.symmetric(horizontal: MediaQuery.of(context).size.width >= 600 ? 8 : 4),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  if (room != null && !room!.privateChat)
+                    TextButton(
+                      onPressed: _toggleUsers,
+                      style: TextButton.styleFrom(foregroundColor: const Color(0xFFC4B5FD), padding: const EdgeInsets.symmetric(horizontal: 8)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.people_alt_outlined, size: 20),
+                        const SizedBox(width: 5),
+                        Text('${room!.users.length}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+                        const SizedBox(width: 3),
+                        Icon(usersVisible ? Icons.keyboard_arrow_right : Icons.keyboard_arrow_left, size: 18),
+                      ]),
                     ),
-                    icon: const Icon(Icons.explore_outlined, size: 18),
-                    label: Text(
-                      MediaQuery.of(context).size.width >= 600 ? 'Explorar salas' : 'Salas',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Usuarios de la sala',
-                    onPressed: _showUsersSheet,
-                    icon: const Icon(Icons.people_alt_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'Opciones',
-                    onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-                    icon: const Icon(Icons.settings_outlined),
-                  ),
                   IconButton(
                     tooltip: 'Desconectar',
                     onPressed: _confirmDisconnect,
@@ -955,7 +940,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ],
               )
             : AppBar(
-                backgroundColor: const Color(0xFF111820),
+                backgroundColor: const Color(0xFF0D0D1B),
                 title: const Row(mainAxisSize: MainAxisSize.min, children: [
                   _ParloteoLogo(size: 28),
                   SizedBox(width: 8),
@@ -969,7 +954,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (room != null) _tabs(),
           Expanded(child: Row(children: [
             Expanded(child: room == null ? _welcome() : _chat(room!)),
-            if (room != null && !room!.privateChat && MediaQuery.sizeOf(context).width >= 720)
+            if (room != null && !room!.privateChat)
               usersVisible ? _users(room!) : _collapsedUsers(room!),
           ])),
           if (room != null) _composer(),
@@ -1013,55 +998,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
 
-  void _showUsersSheet() {
+  void _toggleUsers() {
     final active = room;
-    if (active == null || active.privateChat) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('La lista de usuarios está disponible en una sala pública.')));
-      return;
-    }
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF111323),
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * .68,
-          child: Column(children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
-              child: Row(children: [
-                const Icon(Icons.people_alt_outlined, color: Color(0xFF38BDF8)),
-                const SizedBox(width: 8),
-                Expanded(child: Text('Personas en ${active.name}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
-                Text('${active.users.length}', style: const TextStyle(color: Color(0xFFC4B5FD), fontWeight: FontWeight.bold)),
-              ]),
-            ),
-            const Divider(height: 1),
-            Expanded(child: AnimatedBuilder(
-              animation: controller,
-              builder: (_, __) => ListView(
-                children: _sortedUsers(active).map((u) {
-                  final ignored = controller.ignoredUsers.contains(u.nick.toLowerCase());
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: const Color(0xFF21163B),
-                      child: Text(u.nick.isEmpty ? '?' : u.nick.substring(0, 1).toUpperCase(), style: TextStyle(color: _nickColor(u.nick))),
-                    ),
-                    title: Row(children: [
-                      if (ignored) const Padding(padding: EdgeInsets.only(right: 5), child: Icon(Icons.block, size: 14, color: Colors.redAccent)),
-                      if (u.prefixes.isNotEmpty) Padding(padding: const EdgeInsets.only(right: 4), child: Text(u.prefixes, style: TextStyle(color: _nickColor(u.nick)))),
-                      Expanded(child: Text(u.nick, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(u.nick)))),
-                    ]),
-                    onTap: () { Navigator.pop(sheetContext); _showUserActions(u.nick); },
-                  );
-                }).toList(),
-              ),
-            )),
-          ]),
-        ),
-      ),
-    );
+    if (active == null || active.privateChat) return;
+    setState(() => usersVisible = !usersVisible);
   }
 
   Widget _navigationPanel() {
@@ -1286,6 +1226,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
       return;
     }
+    await storage.saveLastNickname(_cleanNickname(value));
     host.text = 'irc.chateamos.org';
     port.text = '6667';
     channel.clear();
@@ -1329,6 +1270,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final label = Text(r.name, style: const TextStyle(fontSize: 12));
     if (r.unread <= 0 || r.name == controller.activeRoom) return label;
     return _BlinkingUnread(label: label, count: r.unread, color: _nickColor(r.name));
+  }
+
+  String _messageTime(DateTime? timestamp) {
+    final value = (timestamp ?? DateTime.now()).toLocal();
+    return '${value.hour}:${value.minute.toString().padLeft(2, '0')}';
   }
 
   Widget _chat(ChatRoomModel r) => Column(children: [
@@ -1415,15 +1361,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: Column(
                       crossAxisAlignment: ownMessage ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                       children: [
-                        InkWell(
-                          onTap: user == 'Sistema' ? null : () => _showUserActions(user),
-                          borderRadius: BorderRadius.circular(6),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            child: Text(ownMessage ? 'Tú' : user,
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: _nickColor(user))),
-                          ),
-                        ),
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          Flexible(child: InkWell(
+                            onTap: user == 'Sistema' ? null : () => _showUserActions(user),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              child: Text(ownMessage ? 'Tú' : user,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: _nickColor(user))),
+                            ),
+                          )),
+                          const SizedBox(width: 6),
+                          Text(_messageTime(m.timestamp), style: const TextStyle(fontSize: 9, letterSpacing: .15, color: Color(0xFF85819D), fontWeight: FontWeight.w500)),
+                        ]),
                         Container(
                           constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .78),
                           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
@@ -1464,41 +1415,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   ]);
 
   Widget _users(ChatRoomModel r) => Container(
-        width: 148,
+        width: (MediaQuery.sizeOf(context).width * .38).clamp(124.0, 176.0).toDouble(),
         decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),
         child: Column(children: [
           Padding(padding: const EdgeInsets.fromLTRB(7, 5, 4, 2), child: Row(children: [
             Expanded(child: Text('USUARIOS · ${r.users.length}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54))),
-            IconButton(onPressed: () => setState(() => usersVisible = false), icon: const Icon(Icons.keyboard_double_arrow_right, size: 17), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28)),
+            IconButton(onPressed: _toggleUsers, icon: const Icon(Icons.keyboard_double_arrow_right, size: 17), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28)),
           ])),
-          Expanded(child: ListView(padding: const EdgeInsets.all(6), children: _sortedUsers(r).map((u) {
+          Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4), children: _sortedUsers(r).map((u) {
             final ignored = controller.ignoredUsers.contains(u.nick.toLowerCase());
-            return ListTile(
-              dense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 2),
-              title: Row(children: [
-                if (u.prefixes.isNotEmpty)
-                  Text(u.prefixes, style: TextStyle(color: _nickColor(u.nick), fontWeight: FontWeight.w600)),
-                if (ignored)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 4),
-                    child: Icon(Icons.block, size: 14, color: Colors.redAccent),
-                  ),
-                Expanded(child: Text(u.nick, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(u.nick), fontWeight: FontWeight.w600))),
-              ]),
-              onTap: () => _showUserActions(u.nick),
+            return Container(
+              margin: const EdgeInsets.symmetric(vertical: 3),
+              decoration: BoxDecoration(color: const Color(0xFF171329), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0x222C2B48))),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => _showUserActions(u.nick),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
+                  child: Row(children: [
+                    CircleAvatar(radius: 12, backgroundColor: const Color(0xFF292044), child: Text(u.nick.isEmpty ? '?' : u.nick.substring(0, 1).toUpperCase(), style: TextStyle(fontSize: 10, color: _nickColor(u.nick), fontWeight: FontWeight.w800))),
+                    const SizedBox(width: 5),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        if (ignored) const Padding(padding: EdgeInsets.only(right: 3), child: Icon(Icons.block, size: 12, color: Colors.redAccent)),
+                        if (u.prefixes.isNotEmpty) Padding(padding: const EdgeInsets.only(right: 3), child: Text(u.prefixes, style: TextStyle(fontSize: 10, color: _nickColor(u.nick), fontWeight: FontWeight.w700))),
+                        Expanded(child: Text(u.nick, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: _nickColor(u.nick), fontWeight: FontWeight.w700))),
+                      ]),
+                    ])),
+                  ]),
+                ),
+              ),
             );
           }).toList())),
         ]),
       );
 
-  Widget _collapsedUsers(ChatRoomModel r) => Material(color: const Color(0xFF151B22), child: InkWell(
+  Widget _collapsedUsers(ChatRoomModel r) => Material(color: const Color(0xFF111323), child: InkWell(
         onTap: () => setState(() => usersVisible = true),
-        child: SizedBox(width: 44, child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
-          const SizedBox(height: 8),
-          const Icon(Icons.people_alt_outlined, size: 20),
+        child: Container(width: 38, decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0x332C2B48)))), child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
+          const SizedBox(height: 9),
+          const Icon(Icons.keyboard_arrow_left, size: 17, color: Color(0xFFC4B5FD)),
+          const SizedBox(height: 5),
+          const Icon(Icons.people_alt_outlined, size: 19, color: Color(0xFFC4B5FD)),
           const SizedBox(height: 4),
-          Text('${r.users.length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+          Text('${r.users.length}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Colors.white)),
         ])),
       ));
 

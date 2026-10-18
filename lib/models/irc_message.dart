@@ -3,8 +3,9 @@ class IrcMessage {
   final String? prefix;
   final String command;
   final List<String> params;
+  final DateTime? timestamp;
 
-  const IrcMessage(this.raw, this.prefix, this.command, this.params);
+  const IrcMessage(this.raw, this.prefix, this.command, this.params, {this.timestamp});
 
   String get trailing => params.isEmpty ? '' : params.last;
 
