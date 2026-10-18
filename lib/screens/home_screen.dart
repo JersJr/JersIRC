@@ -1417,7 +1417,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ]),
       );
 
-  Widget _collapsedUsers(ChatRoomModel r) => Material(color: const Color(0xFF0D1020), child: InkWell((
+  Widget _collapsedUsers(ChatRoomModel r) => Material(color: const Color(0xFF0D1020), child: InkWell(
         onTap: () => setState(() => usersVisible = true),
         child: SizedBox(width: 44, child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
           const SizedBox(height: 8),
