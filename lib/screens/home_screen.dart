@@ -921,7 +921,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         key: _scaffoldKey,
         appBar: controller.connected
             ? AppBar(
-                backgroundColor: const Color(0xFF111820),
+                backgroundColor: const Color(0xFF0B1020),
                 leading: const SizedBox.shrink(),
                 leadingWidth: 8,
                 titleSpacing: 0,
@@ -1230,11 +1230,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         height: 46,
         child: ListView(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           children: controller.rooms.values.where((r) => !r.privateChat).map((r) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 3),
             child: Material(
-              color: r.name == controller.activeRoom ? const Color(0xFF53677D) : const Color(0xFF252D36),
+              color: r.name == controller.activeRoom ? const Color(0xFF34205F) : const Color(0xFF171B2D),
               borderRadius: BorderRadius.circular(18),
               child: InkWell(
                 onTap: () { controller.activeRoom = r.name; r.unread = 0; setState(() {}); _scrollBottom(); },
@@ -1292,7 +1292,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         )
       : ListView.builder(
           controller: scroll,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 22),
           itemCount: r.messages.length,
           itemBuilder: (context, i) {
             final m = r.messages[i];
@@ -1320,14 +1320,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             }
             final user = m.nick ?? 'Sistema';
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
-              child: RichText(text: TextSpan(children: [
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              child: RichText(text: TextSpan(style: const TextStyle(fontSize: 14, height: 1.28, letterSpacing: 0.05), children: [
                 WidgetSpan(alignment: PlaceholderAlignment.middle, child: InkWell(
                   onTap: user == 'Sistema' ? null : () => _showUserActions(user),
                   borderRadius: BorderRadius.circular(4),
-                  child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1), child: Text('$user:', style: TextStyle(fontWeight: FontWeight.bold, color: _nickColor(user)))),
+                  child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1), child: Text('$user:', style: TextStyle(fontSize: 14, height: 1.25, fontWeight: FontWeight.w700, letterSpacing: 0.05, color: _nickColor(user)))),
                 )),
-                TextSpan(text: ' ${_clean(m.trailing)}', style: const TextStyle(color: Colors.white)),
+                TextSpan(text: ' ${_clean(m.trailing)}', style: const TextStyle(color: Color(0xFFE6E9F5), fontSize: 14, height: 1.3, letterSpacing: 0.05)),
               ])),
             );
           },
@@ -1374,11 +1374,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ));
 
   Widget _composer() => SafeArea(child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        child: Row(children: [
-          Expanded(child: TextField(controller: message, focusNode: messageFocus, enabled: controller.connected, onSubmitted: (_) => _send(), maxLines: 4, minLines: 1, decoration: const InputDecoration(hintText: 'Escribe un mensaje o /comando'))),
-          const SizedBox(width: 8),
-          IconButton.filled(onPressed: controller.connected ? _send : null, icon: const Icon(Icons.send_rounded)),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Expanded(child: TextField(controller: message, focusNode: messageFocus, enabled: controller.connected, onSubmitted: (_) => _send(), maxLines: 4, minLines: 1, decoration: InputDecoration(
+            hintText: 'Escribe un mensaje o /comando',
+            prefixIcon: const Icon(Icons.chat_bubble_outline_rounded, size: 19),
+            filled: true,
+            fillColor: const Color(0xFF14182B),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.07))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.07))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF8B5CF6), width: 1.4)),
+          ))),
+          const SizedBox(width: 9),
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFF6D4AFF)]),
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [BoxShadow(color: const Color(0xFF8B5CF6).withValues(alpha: 0.22), blurRadius: 14, offset: const Offset(0, 4))],
+            ),
+            child: IconButton(onPressed: controller.connected ? _send : null, color: Colors.white, icon: const Icon(Icons.send_rounded), tooltip: 'Enviar mensaje'),
+          ),
         ]),
       ));
 
@@ -1388,8 +1404,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     var h = 0;
     for (final c in user.codeUnits) h = (h * 31 + c) & 0x7fffffff;
     const c = [
-      Color(0xFF7CB8FF), Color(0xFFFFA6C9), Color(0xFFB9E986), Color(0xFFFFCC80),
-      Color(0xFFC7A7FF), Color(0xFF72E0D1), Color(0xFFFF9E80), Color(0xFF9FA8DA),
+      Color(0xFFA78BFA), Color(0xFF22D3EE), Color(0xFFF472B6), Color(0xFF34D399),
+      Color(0xFFFBBF24), Color(0xFF818CF8), Color(0xFFFB923C), Color(0xFF67E8F9),
     ];
     return c[h % c.length];
   }
