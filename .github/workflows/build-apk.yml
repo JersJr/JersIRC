@@ -2,7 +2,7 @@ name: Build Parloteo Android APK
 
 on:
   push:
-    branches: [ main, refactor/core-architecture, jersirc2-clean ]
+    branches: [ main, refactor/core-architecture, jersirc2-clean, parloteo-redesign-262 ]
   workflow_dispatch:
 
 permissions:
