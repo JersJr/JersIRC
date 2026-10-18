@@ -269,14 +269,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (controller.connected) await storage.saveLastNickname(n);
     if (!controller.connected) {
       if (mounted && controller.banNotice != null) { await _showBanError(); return; }
-      if (mounted && _isNicknameError(controller.status)) await _showNicknameError();
+      if (mounted && _isNicknameError(controller.status)) { await _showNicknameError(); return; }
+      if (mounted) {
+        setState(() {
+          _catalogLoading = false;
+          _webChatEntry = false;
+        });
+        final detail = controller.status.trim();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(detail.isEmpty || detail == 'Desconectado'
+                ? 'No se pudo conectar al chat. Comprueba tu conexión e inténtalo de nuevo.'
+                : 'No se pudo entrar al chat: $detail'),
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      }
       return;
     }
 
     var autoJoinedCountryRoom = false;
     if (autoSelectCountryRoom) {
-      _country ??= await CountryService.detect();
-      // Entrar primero a la sala del país; LIST no debe bloquear el ingreso.
+      // Mostrar el chat inmediatamente. La detección de país y LIST se resuelven
+      // después, en segundo plano, para que no parezca que el botón no funciona.
       ch = _fallbackCountryRoom(_country);
       channel.text = ch;
       if (ch.isNotEmpty) {
@@ -284,19 +299,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         autoJoinedCountryRoom = true;
       }
       if (mounted) setState(() => _catalogLoading = true);
-      final catalog = await controller.listChannels();
-      if (!mounted) return;
-      setState(() {
-        _channelCatalog = catalog;
-        _catalogLoading = false;
-      });
-      final defaultRoom = _defaultCountryRoom(catalog, _country);
-      if (defaultRoom != null && defaultRoom.channel.toLowerCase() != ch.toLowerCase()) {
-        controller.closeRoom(ch);
-        ch = defaultRoom.channel;
-        channel.text = ch;
-        controller.join(ch);
-      }
     }
 
     final profileName = selectedProfile?.trim().isNotEmpty == true ? selectedProfile! : h;
@@ -319,6 +321,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       controller.join(ch);
     } else if (autoSelectCountryRoom && ch.isEmpty && mounted) {
       await _showRoomExplorer();
+    }
+    if (autoSelectCountryRoom && ch.isNotEmpty) {
+      _refineCountryRoomInBackground(ch);
+    }
+  }
+
+  Future<void> _refineCountryRoomInBackground(String initialRoom) async {
+    try {
+      _country ??= await CountryService.detect();
+      if (!mounted || !controller.connected ||
+          controller.activeRoom?.toLowerCase() != initialRoom.toLowerCase()) {
+        if (mounted) setState(() => _catalogLoading = false);
+        return;
+      }
+      final catalog = await controller.listChannels(timeout: const Duration(seconds: 7));
+      if (!mounted) return;
+      setState(() {
+        _channelCatalog = catalog;
+        _catalogLoading = false;
+      });
+      final listedCountryRoom = _defaultCountryRoom(catalog, _country);
+      final desiredRoom = listedCountryRoom?.channel ?? _fallbackCountryRoom(_country);
+      if (desiredRoom.isEmpty ||
+          desiredRoom.toLowerCase() == initialRoom.toLowerCase() ||
+          controller.activeRoom?.toLowerCase() != initialRoom.toLowerCase()) {
+        return;
+      }
+      controller.closeRoom(initialRoom);
+      channel.text = desiredRoom;
+      controller.join(desiredRoom);
+    } catch (_) {
+      if (mounted) setState(() => _catalogLoading = false);
+      // La sala de respaldo ya está abierta; un fallo de geolocalización/LIST
+      // no debe bloquear la conversación.
     }
   }
 
@@ -1209,6 +1245,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     label: Text(controller.connecting ? 'Conectando…' : 'Entrar a Parloteo'),
                     style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
                   )),
+                  if (controller.connecting || (!controller.connected && controller.status != 'Desconectado')) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: controller.connecting
+                            ? const Color(0x1A8B5CF6)
+                            : const Color(0x1AD946EF),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: controller.connecting
+                              ? const Color(0x558B5CF6)
+                              : const Color(0x55D946EF),
+                        ),
+                      ),
+                      child: Row(children: [
+                        Icon(
+                          controller.connecting ? Icons.sync_rounded : Icons.error_outline_rounded,
+                          color: controller.connecting ? const Color(0xFFC4B5FD) : const Color(0xFFF0ABFC),
+                          size: 19,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            controller.status,
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                        ),
+                        if (controller.connecting)
+                          const SizedBox(
+                            width: 17,
+                            height: 17,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                      ]),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   const Text('Tu último nick se recordará para la próxima vez.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF8589A6), fontSize: 11)),
                 ],
@@ -1233,7 +1307,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     secure = false;
     selectedProfile = null;
     _webChatEntry = true;
-    _country = await CountryService.detect();
     if (mounted) setState(() {});
     await _connect(autoSelectCountryRoom: true);
   }
