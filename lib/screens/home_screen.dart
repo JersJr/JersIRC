@@ -921,7 +921,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         key: _scaffoldKey,
         appBar: controller.connected
             ? AppBar(
-                backgroundColor: const Color(0xFF0B1020),
+                backgroundColor: const Color(0xFF080912),
                 leading: const SizedBox.shrink(),
                 leadingWidth: 8,
                 titleSpacing: 0,
@@ -985,7 +985,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ],
               )
             : AppBar(
-                backgroundColor: const Color(0xFF111820),
+                backgroundColor: const Color(0xFF080912),
                 title: const Row(mainAxisSize: MainAxisSize.min, children: [
                   _ParloteoLogo(size: 28),
                   SizedBox(width: 8),
@@ -1009,7 +1009,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final privates = _privateRooms();
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(bottom: BorderSide(color: Colors.white10))),
+      decoration: const BoxDecoration(color: Color(0xFF0D1020), border: Border(bottom: BorderSide(color: Color(0x2222D3EE)))), 
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1234,7 +1234,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: controller.rooms.values.where((r) => !r.privateChat).map((r) => Padding(
             padding: const EdgeInsets.symmetric(horizontal: 3),
             child: Material(
-              color: r.name == controller.activeRoom ? const Color(0xFF34205F) : const Color(0xFF171B2D),
+              color: r.name == controller.activeRoom ? const Color(0xFF49307D) : const Color(0xFF111625),
               borderRadius: BorderRadius.circular(18),
               child: InkWell(
                 onTap: () { controller.activeRoom = r.name; r.unread = 0; setState(() {}); _scrollBottom(); },
@@ -1292,7 +1292,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         )
       : ListView.builder(
           controller: scroll,
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 22),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
           itemCount: r.messages.length,
           itemBuilder: (context, i) {
             final m = r.messages[i];
@@ -1319,24 +1319,78 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
             }
             final user = m.nick ?? 'Sistema';
+            final accent = _nickColor(user);
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: RichText(text: TextSpan(style: const TextStyle(fontSize: 14, height: 1.28, letterSpacing: 0.05), children: [
-                WidgetSpan(alignment: PlaceholderAlignment.middle, child: InkWell(
-                  onTap: user == 'Sistema' ? null : () => _showUserActions(user),
-                  borderRadius: BorderRadius.circular(4),
-                  child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1), child: Text('$user:', style: TextStyle(fontSize: 14, height: 1.25, fontWeight: FontWeight.w700, letterSpacing: 0.05, color: _nickColor(user)))),
-                )),
-                TextSpan(text: ' ${_clean(m.trailing)}', style: const TextStyle(color: Color(0xFFE6E9F5), fontSize: 14, height: 1.3, letterSpacing: 0.05)),
-              ])),
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Material(
+                    color: accent.withValues(alpha: 0.14),
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: user == 'Sistema' ? null : () => _showUserActions(user),
+                      child: SizedBox(
+                        width: 34,
+                        height: 34,
+                        child: Center(
+                          child: Text(
+                            user.isEmpty ? '?' : user.characters.first.toUpperCase(),
+                            style: TextStyle(color: accent, fontSize: 13, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+                      decoration: BoxDecoration(
+                        color: r.privateChat ? const Color(0xFF19162B) : const Color(0xFF111625),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(5),
+                          topRight: Radius.circular(15),
+                          bottomLeft: Radius.circular(15),
+                          bottomRight: Radius.circular(15),
+                        ),
+                        border: Border.all(color: accent.withValues(alpha: 0.13)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          InkWell(
+                            onTap: user == 'Sistema' ? null : () => _showUserActions(user),
+                            borderRadius: BorderRadius.circular(5),
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 4, right: 4),
+                              child: Text(
+                                user,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.1),
+                              ),
+                            ),
+                          ),
+                          SelectableText(
+                            _clean(m.trailing),
+                            style: const TextStyle(color: Color(0xFFE6E9F5), fontSize: 14, height: 1.35, letterSpacing: 0.05),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         )),
   ]);
 
   Widget _users(ChatRoomModel r) => Container(
-        width: 148,
-        decoration: const BoxDecoration(color: Color(0xFF151B22), border: Border(left: BorderSide(color: Colors.white10))),
+        width: MediaQuery.of(context).size.width < 420 ? 112 : 164,
+        decoration: const BoxDecoration(color: Color(0xFF0D1020), border: Border(left: BorderSide(color: Color(0x2222D3EE)))), 
         child: Column(children: [
           Padding(padding: const EdgeInsets.fromLTRB(7, 5, 4, 2), child: Row(children: [
             Expanded(child: Text('USUARIOS · ${r.users.length}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54))),
@@ -1363,7 +1417,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ]),
       );
 
-  Widget _collapsedUsers(ChatRoomModel r) => Material(color: const Color(0xFF151B22), child: InkWell(
+  Widget _collapsedUsers(ChatRoomModel r) => Material(color: const Color(0xFF0D1020), child: InkWell((
         onTap: () => setState(() => usersVisible = true),
         child: SizedBox(width: 44, child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
           const SizedBox(height: 8),
