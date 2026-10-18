@@ -283,13 +283,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _catalogLoading = false;
       });
       final defaultRoom = _defaultCountryRoom(catalog, _country);
-      if (defaultRoom != null) {
-        ch = defaultRoom.channel;
-        channel.text = ch;
-      } else {
-        ch = '';
-        channel.clear();
-      }
+      // Si LIST no devuelve el catálogo completo, intenta igualmente la sala
+      // del país detectado en lugar de dejar al usuario sin entrar a ninguna.
+      ch = defaultRoom?.channel ?? _fallbackCountryRoom(_country);
+      channel.text = ch;
     }
 
     final profileName = selectedProfile?.trim().isNotEmpty == true ? selectedProfile! : h;
@@ -384,6 +381,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     'IN': ['india'],
     'CN': ['china'],
   };
+
+  String _fallbackCountryRoom(DetectedCountry? country) {
+    if (country == null) return '#panama';
+    final code = country.code.trim().toUpperCase();
+    if (code == 'ES') return '#españa';
+    if (code == 'PA') return '#panama';
+    final aliases = _countryRoomAliases[code];
+    if (aliases != null && aliases.isNotEmpty) return '#${aliases.first}';
+    final normalized = _normalize(country.name).replaceAll(' ', '').trim();
+    return normalized.isEmpty ? '#panama' : '#$normalized';
+  }
 
   IrcChannelInfo? _defaultCountryRoom(List<IrcChannelInfo> channels, DetectedCountry? country) {
     if (country == null) return null;
@@ -669,44 +677,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _confirmAdvancedSettings() async {
-    if (await storage.getSkipAdvancedWarning()) {
-      if (mounted) _scaffoldKey.currentState?.openEndDrawer();
-      return;
-    }
-    var doNotRemind = false;
-    final result = await showDialog<Map<String, bool>>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          icon: const Icon(Icons.warning_amber_rounded, color: Colors.amber),
-          title: const Text('Configuraciones avanzadas'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Estos cambios pueden ser permanentes y afectar tu experiencia en el chat. Si no conoces su funcionamiento, podrías perjudicar tu experiencia. ¿Deseas continuar?'),
-              const SizedBox(height: 8),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                value: doNotRemind,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: const Text('No recordar'),
-                onChanged: (value) => setDialogState(() => doNotRemind = value ?? false),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, {'proceed': false, 'doNotRemind': false}), child: const Text('Cancelar')),
-            FilledButton(onPressed: () => Navigator.pop(dialogContext, {'proceed': true, 'doNotRemind': doNotRemind}), child: const Text('Continuar')),
-          ],
-        ),
-      ),
-    );
-    if (result?['proceed'] == true) {
-      if (result?['doNotRemind'] == true) await storage.setSkipAdvancedWarning(true);
-      if (mounted) _scaffoldKey.currentState?.openEndDrawer();
-    }
+    // El botón de opciones debe abrirse directamente, sin un diálogo intermedio.
+    if (mounted) _scaffoldKey.currentState?.openEndDrawer();
   }
 
   Widget _settingsDrawer() => Drawer(
@@ -736,11 +708,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       ),
       const Divider(height: 28),
-      const Text('CONEXIÓN', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white54, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 10),
-      ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.dns_outlined), title: const Text('Servidor'), subtitle: Text(host.text.trim().isEmpty ? '—' : host.text.trim())),
-      ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.settings_ethernet), title: const Text('Puerto'), subtitle: Text('${port.text.trim()}${secure ? ' · TLS' : ' · sin TLS'}')),
-      ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.tag), title: const Text('Sala y rango actual'), subtitle: Text('${room?.name ?? 'Sin sala'} · ${_hasOperatorRank ? 'Operador' : 'Sin rango OP detectado'}')),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.tag, color: Color(0xFF38BDF8)),
+        title: const Text('Sala actual'),
+        subtitle: Text('${room?.name ?? 'Sin sala'} · ${_hasOperatorRank ? 'Operador' : 'Usuario'}'),
+      ),
       const Divider(height: 28),
       const Text('MODERACIÓN', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white54, fontWeight: FontWeight.bold)),
       SwitchListTile.adaptive(
@@ -963,18 +936,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
                     ),
                   ),
-                  Builder(
-                    builder: (scaffoldContext) => _PrivateAppBarButton(
-                      unreadCount: _privateUnreadTotal(),
-                      onPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
-                    ),
+                  IconButton(
+                    tooltip: 'Usuarios de la sala',
+                    onPressed: _showUsersSheet,
+                    icon: const Icon(Icons.people_alt_outlined),
                   ),
-                  Builder(
-                    builder: (scaffoldContext) => IconButton(
-                      tooltip: 'Opciones',
-                      onPressed: () => _confirmAdvancedSettings(),
-                      icon: const Icon(Icons.settings_outlined),
-                    ),
+                  IconButton(
+                    tooltip: 'Opciones',
+                    onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+                    icon: const Icon(Icons.settings_outlined),
                   ),
                   IconButton(
                     tooltip: 'Desconectar',
@@ -994,16 +964,105 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
         drawer: controller.connected ? _drawer() : null,
         endDrawer: controller.connected ? _settingsDrawer() : null,
+        bottomNavigationBar: controller.connected ? _bottomNavigationBar() : null,
         body: Column(children: [
           if (room != null) _tabs(),
           Expanded(child: Row(children: [
             Expanded(child: room == null ? _welcome() : _chat(room!)),
-            if (room != null && !room!.privateChat)
+            if (room != null && !room!.privateChat && MediaQuery.sizeOf(context).width >= 720)
               usersVisible ? _users(room!) : _collapsedUsers(room!),
           ])),
           if (room != null) _composer(),
         ]),
       );
+
+  Widget _bottomNavigationBar() => SafeArea(
+        top: false,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF0D0D1B),
+            border: Border(top: BorderSide(color: Color(0x332C2B48))),
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+          child: Row(children: [
+            Expanded(child: _bottomNavItem(Icons.explore_outlined, 'Salas', _showRoomExplorer)),
+            Expanded(child: _bottomNavItem(Icons.mail_outline_rounded, 'Privados', () => _scaffoldKey.currentState?.openDrawer(), badge: _privateUnreadTotal())),
+            Expanded(child: _bottomNavItem(Icons.tune_rounded, 'Opciones', () => _scaffoldKey.currentState?.openEndDrawer())),
+          ]),
+        ),
+      );
+
+  Widget _bottomNavItem(IconData icon, String label, VoidCallback onTap, {int badge = 0}) =>
+      InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Stack(clipBehavior: Clip.none, children: [
+              Icon(icon, size: 22, color: const Color(0xFFC4B5FD)),
+              if (badge > 0) Positioned(right: -10, top: -5, child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(color: const Color(0xFFD946EF), borderRadius: BorderRadius.circular(10)),
+                child: Text('$badge', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+              )),
+            ]),
+            const SizedBox(height: 3),
+            Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFFA5A3C2), fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      );
+
+  void _showUsersSheet() {
+    final active = room;
+    if (active == null || active.privateChat) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('La lista de usuarios está disponible en una sala pública.')));
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF111323),
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .68,
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+              child: Row(children: [
+                const Icon(Icons.people_alt_outlined, color: Color(0xFF38BDF8)),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Personas en ${active.name}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+                Text('${active.users.length}', style: const TextStyle(color: Color(0xFFC4B5FD), fontWeight: FontWeight.bold)),
+              ]),
+            ),
+            const Divider(height: 1),
+            Expanded(child: AnimatedBuilder(
+              animation: controller,
+              builder: (_, __) => ListView(
+                children: _sortedUsers(active).map((u) {
+                  final ignored = controller.ignoredUsers.contains(u.nick.toLowerCase());
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: const Color(0xFF21163B),
+                      child: Text(u.nick.isEmpty ? '?' : u.nick.substring(0, 1).toUpperCase(), style: TextStyle(color: _nickColor(u.nick))),
+                    ),
+                    title: Row(children: [
+                      if (ignored) const Padding(padding: EdgeInsets.only(right: 5), child: Icon(Icons.block, size: 14, color: Colors.redAccent)),
+                      if (u.prefixes.isNotEmpty) Padding(padding: const EdgeInsets.only(right: 4), child: Text(u.prefixes, style: TextStyle(color: _nickColor(u.nick)))),
+                      Expanded(child: Text(u.nick, overflow: TextOverflow.ellipsis, style: TextStyle(color: _nickColor(u.nick)))),
+                    ]),
+                    onTap: () { Navigator.pop(sheetContext); _showUserActions(u.nick); },
+                  );
+                }).toList(),
+              ),
+            )),
+          ]),
+        ),
+      ),
+    );
+  }
 
   Widget _navigationPanel() {
     final privates = _privateRooms();
@@ -1085,6 +1144,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final value = nick.text.trim();
     if (value.isEmpty || !controller.connected) return;
     controller.changeNick(value);
+    await storage.saveLastNickname(value);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Nick cambiado a $value')),
@@ -1157,51 +1217,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
 
   Widget _welcome() => Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.forum_rounded, size: 54),
-                const SizedBox(height: 18),
-                const Text(
-                  'Escoja su Nick',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Elija cómo quiere aparecer en el chat',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white54),
-                ),
-                if (_country != null) ...[
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(22),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF171329), Color(0xFF101121)]),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: const Color(0x338B5CF6)),
+                boxShadow: const [BoxShadow(color: Color(0x221D1640), blurRadius: 28, offset: Offset(0, 12))],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const _ParloteoLogo(size: 64),
+                  const SizedBox(height: 16),
+                  const Text('Bienvenido a Parloteo', textAlign: TextAlign.center, style: TextStyle(fontSize: 25, fontWeight: FontWeight.w900, letterSpacing: -.5)),
+                  const SizedBox(height: 7),
+                  const Text('Conversa, descubre salas y conoce personas.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFFA5A3C2), height: 1.4)),
+                  const SizedBox(height: 24),
+                  Align(alignment: Alignment.centerLeft, child: Text('¿Cómo te llamamos?', style: TextStyle(color: Color(0xFFC4B5FD), fontWeight: FontWeight.w700, fontSize: 13))),
                   const SizedBox(height: 8),
-                  Text('País detectado: ${_country!.name}', style: const TextStyle(color: Colors.white70)),
-                ],
-                const SizedBox(height: 24),
-                TextField(
-                  controller: nick,
-                  autofocus: true,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _enterWebChat(),
-                  decoration: const InputDecoration(
-                    labelText: 'Nickname',
-                    hintText: 'Escriba su Nick',
-                    prefixIcon: Icon(Icons.person_outline),
+                  TextField(
+                    controller: nick,
+                    autofocus: true,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _enterWebChat(),
+                    decoration: const InputDecoration(labelText: 'Tu nick', hintText: 'Escribe tu apodo', prefixIcon: Icon(Icons.person_outline_rounded)),
                   ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(13),
+                    decoration: BoxDecoration(color: const Color(0xFF0C0D1A), borderRadius: BorderRadius.circular(16)),
+                    child: Row(children: [
+                      const Icon(Icons.public_rounded, color: Color(0xFF38BDF8)),
+                      const SizedBox(width: 10),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(_country == null ? 'Sala de tu comunidad' : 'País detectado: ${_country!.name}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                        const SizedBox(height: 3),
+                        Text(_country == null ? 'Te conectaremos a una sala disponible.' : 'Buscaremos la sala de ${_country!.name} automáticamente.', style: const TextStyle(color: Color(0xFFA5A3C2), fontSize: 11)),
+                      ])),
+                    ]),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(width: double.infinity, child: FilledButton.icon(
                     onPressed: controller.connecting ? null : _enterWebChat,
-                    icon: const Icon(Icons.login_rounded),
-                    label: Text(controller.connecting ? 'Conectando...' : 'Entrar al chat'),
-                  ),
-                ),
-              ],
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: Text(controller.connecting ? 'Conectando…' : 'Entrar a Parloteo'),
+                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                  )),
+                  const SizedBox(height: 10),
+                  const Text('Tu último nick se recordará para la próxima vez.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF8589A6), fontSize: 11)),
+                ],
+              ),
             ),
           ),
         ),
@@ -1234,7 +1305,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: controller.rooms.values.where((r) => !r.privateChat).map((r) => Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
             child: Material(
-              color: r.name == controller.activeRoom ? const Color(0xFF53677D) : const Color(0xFF252D36),
+              color: r.name == controller.activeRoom ? const Color(0xFF34205B) : const Color(0xFF171329),
               borderRadius: BorderRadius.circular(18),
               child: InkWell(
                 onTap: () { controller.activeRoom = r.name; r.unread = 0; setState(() {}); _scrollBottom(); },
@@ -1319,16 +1390,74 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
             }
             final user = m.nick ?? 'Sistema';
+            final ownMessage = user.toLowerCase() == _cleanNickname(nick.text).toLowerCase();
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 5),
-              child: RichText(text: TextSpan(children: [
-                WidgetSpan(alignment: PlaceholderAlignment.middle, child: InkWell(
-                  onTap: user == 'Sistema' ? null : () => _showUserActions(user),
-                  borderRadius: BorderRadius.circular(4),
-                  child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1), child: Text('$user:', style: TextStyle(fontWeight: FontWeight.bold, color: _nickColor(user)))),
-                )),
-                TextSpan(text: ' ${_clean(m.trailing)}', style: const TextStyle(color: Colors.white)),
-              ])),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: ownMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
+                children: [
+                  if (!ownMessage) ...[
+                    Container(
+                      width: 34,
+                      height: 34,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF21163B),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(user.isEmpty ? '?' : user.substring(0, 1).toUpperCase(),
+                        style: TextStyle(color: _nickColor(user), fontWeight: FontWeight.w800)),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: ownMessage ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      children: [
+                        InkWell(
+                          onTap: user == 'Sistema' ? null : () => _showUserActions(user),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Text(ownMessage ? 'Tú' : user,
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: _nickColor(user))),
+                          ),
+                        ),
+                        Container(
+                          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .78),
+                          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: ownMessage ? const Color(0xFF34205B) : const Color(0xFF171329),
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(16),
+                              topRight: const Radius.circular(16),
+                              bottomLeft: Radius.circular(ownMessage ? 16 : 5),
+                              bottomRight: Radius.circular(ownMessage ? 5 : 16),
+                            ),
+                            border: Border.all(color: ownMessage ? const Color(0x558B5CF6) : const Color(0x222C2B48)),
+                          ),
+                          child: Text(_clean(m.trailing), style: const TextStyle(color: Color(0xFFF4F3FA), height: 1.35)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (ownMessage) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 34,
+                      height: 34,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF4A194D),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(user.isEmpty ? '?' : user.substring(0, 1).toUpperCase(),
+                        style: const TextStyle(color: Color(0xFFF5D0FE), fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ],
+              ),
             );
           },
         )),
@@ -1373,14 +1502,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ])),
       ));
 
-  Widget _composer() => SafeArea(child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        child: Row(children: [
-          Expanded(child: TextField(controller: message, focusNode: messageFocus, enabled: controller.connected, onSubmitted: (_) => _send(), maxLines: 4, minLines: 1, decoration: const InputDecoration(hintText: 'Escribe un mensaje o /comando'))),
-          const SizedBox(width: 8),
-          IconButton.filled(onPressed: controller.connected ? _send : null, icon: const Icon(Icons.send_rounded)),
-        ]),
-      ));
+  Widget _composer() => SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+          decoration: const BoxDecoration(color: Color(0xFF0D0D1B), border: Border(top: BorderSide(color: Color(0x222C2B48)))),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(child: TextField(
+              controller: message,
+              focusNode: messageFocus,
+              enabled: controller.connected,
+              onSubmitted: (_) => _send(),
+              maxLines: 4,
+              minLines: 1,
+              decoration: InputDecoration(
+                hintText: 'Escribe un mensaje…',
+                prefixIcon: const Icon(Icons.chat_bubble_outline_rounded, size: 20),
+                filled: true,
+                fillColor: const Color(0xFF171329),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+              ),
+            )),
+            const SizedBox(width: 9),
+            Container(
+              decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFFD946EF)]), borderRadius: BorderRadius.circular(18)),
+              child: IconButton(onPressed: controller.connected ? _send : null, color: Colors.white, icon: const Icon(Icons.send_rounded), tooltip: 'Enviar mensaje'),
+            ),
+          ]),
+        ),
+      );
 
   String _clean(String s) => s.replaceAll(RegExp(r'\u0003(?:\d{1,2}(?:,\d{1,2})?)?'), '').replaceAll(RegExp(r'[\u0002\u000F\u0016\u001D\u001F]'), '');
 
